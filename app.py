@@ -240,7 +240,8 @@ def stitched_biopsy_feed():
             time.sleep(1)
             continue
 
-        if time.time() - last_update_ts < 0.1:
+        # Throttle the stream to approximately 10 FPS
+        if time.time() - last_update_ts < 0.1: # 0.1 seconds = 100ms delay
             time.sleep(0.05)
             continue
         last_update_ts = time.time()
@@ -270,8 +271,6 @@ def continuous_capture_worker():
         # The logic for advancing current_cell and captured_tiles_count
         # is now primarily handled by the /capture_biopsy_tile_from_client route
         # when it successfully processes a frame.
-        # This loop primarily keeps the thread alive and can be used for
-        # periodic checks or more complex continuous processing if needed.
         
         # For now, we'll just sleep to prevent busy-waiting.
         # The real "continuous capture" is driven by the client sending frames.
@@ -349,6 +348,66 @@ def capture_biopsy_tile_internal(frame_data):
         current_cell[1] = 0
         current_cell[0] += 1
     return True # Indicate success
+
+
+def perform_advanced_stitching(patient_id):
+    """
+    Performs advanced image stitching using OpenCV for the final composite image.
+    Retrieves individual tile paths from the session.
+    Returns the stitched image (NumPy array) or None if stitching fails.
+    """
+    if 'current_patient_captured_tiles' not in session:
+        print("No captured tiles found in session for advanced stitching.")
+        return None
+
+    # Filter tiles for the current patient (though session should already be scoped)
+    # This ensures we only stitch tiles relevant to the current patient session
+    tile_paths = [
+        path for path in session['current_patient_captured_tiles']
+        if f"patient_{patient_id}" in os.path.basename(path)
+    ]
+
+    if not tile_paths:
+        print("No tile paths available for stitching.")
+        return None
+
+    # Sort tile paths to ensure correct order for stitching (important for grid layouts)
+    # This is a simple sort, more robust sorting might be needed for complex patterns
+    tile_paths.sort() 
+
+    images = []
+    for path in tile_paths:
+        img = cv2.imread(path)
+        if img is not None:
+            images.append(img)
+        else:
+            print(f"Warning: Could not read image from path: {path}")
+
+    if not images:
+        print("No valid images loaded for stitching.")
+        return None
+
+    # Create a Stitcher object
+    # cv2.Stitcher_SCANS is often good for images captured in a grid/scan pattern
+    # cv2.Stitcher_PANORAMA is for more general panoramic stitching
+    stitcher = cv2.Stitcher_create(cv2.Stitcher_SCANS) # Or cv2.Stitcher_PANORAMA
+
+    # Perform stitching
+    status, stitched_image = stitcher.stitch(images)
+
+    if status == cv2.Stitcher_OK:
+        print("Advanced stitching successful!")
+        return stitched_image
+    else:
+        print(f"Advanced stitching failed with status: {status}")
+        # Provide more specific error messages based on status
+        if status == cv2.Stitcher_ERR_NEED_MORE_IMGS:
+            print("Stitching error: Need more images or insufficient overlap.")
+        elif status == cv2.Stitcher_ERR_HOMOGRAPHY_EST_FAIL:
+            print("Stitching error: Homography estimation failed (not enough matching features).")
+        elif status == cv2.Stitcher_ERR_CAMERA_PARAMS_ADJUST_FAIL:
+            print("Stitching error: Camera parameters adjustment failed.")
+        return None
 
 
 # --- ROUTES ---
