@@ -49,12 +49,10 @@ os.makedirs(BIOPY_CAPTURE_FOLDER, exist_ok=True) # Ensure this folder exists
 
 db = SQLAlchemy(app)
 
-# >>>>>>>>>>>>> IMPORTANT FIX: ADDING db.create_all() HERE <<<<<<<<<<<<<
-# This ensures tables are created when the app starts, both locally and on Render
-with app.app_context():
-    db.create_all()
-    print("DEBUG: Database tables checked/created.")
-# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+# >>>>>>>>>>>>> IMPORTANT: db.create_all() IS NOW REMOVED FROM HERE <<<<<<<<<<<<<
+# It will be run explicitly in Render's Build Command.
+# This ensures it runs once during deployment setup, not every time the app starts.
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 # --- Database Model: User ---
 class User(db.Model):
@@ -67,7 +65,7 @@ class User(db.Model):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+        return check_password_hash(password, self.password_hash) # Corrected order for check_password_hash
 
     def __repr__(self):
         return f'<User {self.email}>'
@@ -105,18 +103,10 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # --- Global Variables for Camera Capture and Real-Time Stitching ---
-# IMPORTANT: On Render, you CANNOT access a physical webcam.
-# The camera functionality will only work locally.
-# For a deployed app, you'd need a different strategy (e.g., upload pre-recorded video, or use a specific camera API if available).
-camera = None # Initialize camera to None
-try:
-    camera = cv2.VideoCapture(0) # Attempt to initialize the default webcam
-    if not camera.isOpened():
-        print("WARNING: Could not open default camera (index 0). Camera features will not work.")
-        camera = None
-except Exception as e:
-    print(f"ERROR: Failed to initialize camera: {e}. Camera features will not work.")
-    camera = None
+# IMPORTANT: cv2.VideoCapture(0) is NO LONGER USED for live camera feed.
+# The camera functionality will now be handled client-side via JavaScript.
+# The `camera` variable will remain `None` on Render servers.
+camera = None 
 
 
 GRID_ROWS, GRID_COLS = 3, 3      # Biopsy grid size (e.g., 3x3)
@@ -212,116 +202,34 @@ def place_on_canvas(img, r, c):
     stitched_canvas[r*cell_h:(r+1)*cell_h, c*cell_w:(c+1)*cell_w] = resized
 
 
-def gen_live_feed():
+# >>>>>>>>>>>>> LIVE FEED GENERATOR IS NO LONGER USED FOR WEBCAM <<<<<<<<<<<<<
+# The live feed will be handled by JavaScript directly in the browser.
+# This function is kept but will effectively serve a placeholder or not be called.
+@app.route('/live_video_feed')
+def live_video_feed():
     """
-    Generator function for the live camera feed (MJPEG stream).
-    Continuously reads frames, draws the grid overlay, and yields JPEG bytes.
+    Streams a placeholder image if camera is not available.
+    This route is now largely symbolic as actual live feed is client-side.
     """
-    global camera, current_focus, current_zoom
-    if camera is None:
-        # Provide a placeholder image if camera is not available
-        placeholder_text = "Camera Not Available"
-        img = np.zeros((480, 640, 3), dtype="uint8") # Black image
-        cv2.putText(img, placeholder_text, (100, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-        ret, buffer = cv2.imencode(".jpg", img)
-        frame_bytes = buffer.tobytes()
-        while True: # Keep yielding the placeholder
-            yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
-                   frame_bytes + b"\r\n")
-            time.sleep(1) # Don't hog CPU
-
-    while True:
-        success, frame = camera.read() # Read a frame from the camera
-        if not success:
-            print("Failed to read frame from camera. Is it in use by another application or not connected?")
-            # Attempt to re-open camera if it was disconnected
-            try:
-                camera.release()
-                camera = cv2.VideoCapture(0)
-                time.sleep(1) # Wait a bit before retrying
-                if not camera.isOpened():
-                    raise IOError("Camera still not open after re-initialization attempt.")
-            except Exception as e:
-                print(f"ERROR: Camera re-initialization failed: {e}. Switching to placeholder.")
-                # If camera fails permanently, switch to placeholder
-                placeholder_text = "Camera Disconnected"
-                img = np.zeros((480, 640, 3), dtype="uint8") # Black image
-                cv2.putText(img, placeholder_text, (100, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-                ret, buffer = cv2.imencode(".jpg", img)
-                frame_bytes = buffer.tobytes()
-                while True: # Keep yielding the placeholder
-                    yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
-                           frame_bytes + b"\r\n")
-                    time.sleep(1) # Don't hog CPU
-            continue # Skip to next iteration
-        
-        # Apply simulated zoom (scaling the frame)
-        # Note: This is a simple simulation. Real optical zoom is more complex.
-        if current_zoom != 50: # Only apply if zoom is not at default
-            scale_factor = 1 + (current_zoom - 50) / 50.0 # Scale from 0.5x to 1.5x
-            
-            # Get original frame dimensions
-            original_h, original_w = frame.shape[:2]
-            
-            # Calculate new dimensions
-            new_w = int(original_w * scale_factor)
-            new_h = int(original_h * scale_factor)
-            
-            # Resize the frame
-            if scale_factor > 1: # Zoom in
-                frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-                # Crop back to original size, centered
-                start_x = int((new_w - original_w) / 2)
-                start_y = int((new_h - original_h) / 2)
-                frame = frame[start_y:start_y+original_h,
-                              start_x:start_x+original_w]
-            else: # Zoom out
-                frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                # Pad back to original size, centered
-                padded_frame = np.zeros((original_h, original_w, 3), dtype="uint8")
-                pad_x = int((original_w - new_w) / 2)
-                pad_y = int((original_h - new_h) / 2)
-                padded_frame[pad_y:pad_y+new_h, pad_x:pad_x+new_w] = frame
-                frame = padded_frame
-
-
-        # Apply simulated focus (blur/sharpen)
-        # Note: This is a simple simulation. Real focus is more complex.
-        if current_focus < 50: # Apply blur if focus is below 50
-            # Map 0-49 to blur kernel size (e.g., 1 to 9, must be odd)
-            blur_amount = int((50 - current_focus) / 50 * 8 + 1) # Max blur_amount = 9
-            if blur_amount % 2 == 0: # Ensure kernel is odd
-                blur_amount += 1
-            frame = cv2.GaussianBlur(frame, (blur_amount, blur_amount), 0)
-        elif current_focus > 50: # Simulate sharpening if focus is above 50
-            # Simple sharpening using unsharp mask effect
-            # Create a sharpened version and blend it
-            kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]]) # Sharpening kernel
-            sharpened = cv2.filter2D(frame, -1, kernel)
-            # Blend original and sharpened based on focus level
-            alpha = (current_focus - 50) / 50.0 # From 0 to 1
-            frame = cv2.addWeighted(frame, 1 - alpha, sharpened, alpha, 0)
-
-
-        frame = draw_overlay(frame) # Apply the grid overlay
-        
-        ret, buffer = cv2.imencode(".jpg", frame) # Encode frame as JPEG
-        frame_bytes = buffer.tobytes()
+    placeholder_text = "Live Camera Feed (Client-Side)"
+    img = np.zeros((480, 640, 3), dtype="uint8") # Black image
+    cv2.putText(img, placeholder_text, (100, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+    ret, buffer = cv2.imencode(".jpg", img)
+    frame_bytes = buffer.tobytes()
+    while True: # Keep yielding the placeholder
         yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
-               frame_bytes + b"\r\n") # Yield JPEG bytes for streaming
+               frame_bytes + b"\r\n")
+        time.sleep(1) # Don't hog CPU
 
-
-def gen_stitched_feed():
+@app.route('/stitched_biopsy_feed')
+def stitched_biopsy_feed():
     """
-    Generator function for the real-time stitched composite image (MJPEG stream).
-    Continuously yields the current state of the global stitched_canvas.
-    Includes a throttle to limit FPS and save bandwidth.
+    Streams the real-time stitched composite image to the web page.
+    This feed is still useful for showing the stitched result.
     """
     global last_update_ts, stitched_canvas
     while True:
         if stitched_canvas is None:
-            # If canvas is not initialized yet, wait a bit and continue
-            # Or provide a blank/placeholder image
             placeholder_text = "Stitched View Not Ready"
             img = np.zeros((360, 480, 3), dtype="uint8") # Black image
             cv2.putText(img, placeholder_text, (50, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
@@ -329,109 +237,107 @@ def gen_stitched_feed():
             frame_bytes = buffer.tobytes()
             yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
                    frame_bytes + b"\r\n")
-            time.sleep(1) # Don't hog CPU while waiting for canvas
+            time.sleep(1)
             continue
 
-        # Throttle the stream to approximately 10 FPS
-        if time.time() - last_update_ts < 0.1: # 0.1 seconds = 100ms delay
+        if time.time() - last_update_ts < 0.1:
             time.sleep(0.05)
             continue
-        last_update_ts = time.time() # Update timestamp for throttling
+        last_update_ts = time.time()
 
-        ret, buffer = cv2.imencode(".jpg", stitched_canvas) # Encode stitched canvas as JPEG
+        ret, buffer = cv2.imencode(".jpg", stitched_canvas)
         frame_bytes = buffer.tobytes()
         yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
-               frame_bytes + b"\r\n") # Yield JPEG bytes for streaming
+               frame_bytes + b"\r\n")
 
-# --- Continuous Capture Thread Function (Step 5 - Simplified) ---
+# --- Continuous Capture Thread Function (now uses received frames) ---
 def continuous_capture_worker():
     """
-    Worker function to continuously capture tiles at intervals.
-    This simulates video capture by repeatedly calling capture_biopsy_tile_internal.
+    Worker function to continuously process frames received from the frontend.
+    This now relies on the frontend sending frames via an API.
     """
     global is_capturing_continuously, captured_tiles_count, total_tiles_needed
-    # Ensure camera is available for continuous capture
-    if camera is None:
-        print("Continuous capture worker cannot start: Camera not initialized.")
-        is_capturing_continuously = False # Ensure flag is false
-        with app.test_request_context():
-            flash("Camera not available for continuous capture. Please check camera connection.", 'error')
-        return
+    # The actual frame capture is now triggered by the frontend.
+    # This thread will simply manage the state and progression,
+    # and expect images to be sent via the /capture_biopsy_tile_from_client route.
 
+    # This continuous_capture_worker is primarily for managing the "continuous" flow
+    # and flashing messages. The actual image data comes from the client.
+    # We'll rely on the client to call /capture_biopsy_tile_from_client repeatedly.
+
+    print("DEBUG: Continuous capture worker started (backend will process client-sent frames).")
     while is_capturing_continuously:
-        with app.app_context(): # Need app context for session access
-            if captured_tiles_count < total_tiles_needed:
-                # Simulate a manual capture tile action
-                if capture_biopsy_tile_internal():
-                    captured_tiles_count += 1
-                    # Simulate a "missed frame" occasionally for demonstration (Step 7)
-                    if np.random.rand() < 0.02: # 2% chance to "miss" a frame
-                        # Use app.test_request_context for flashing outside a direct request
-                        with app.test_request_context():
-                            flash(f"Missed frame detected near ({current_cell[0]+1},{current_cell[1]+1})! Please adjust camera.", 'warning')
-                        print("SIMULATED: Missed frame detected!")
-                else:
-                    print("Continuous capture worker failed to capture tile.")
-            else:
-                # All tiles captured, stop continuous capture
-                is_capturing_continuously = False
-                with app.test_request_context(): # Use test context for flashing outside a request
-                    flash("All biopsy sections captured! Proceed to final review.", 'success')
-                print("All tiles captured. Stopping continuous capture.")
+        # The logic for advancing current_cell and captured_tiles_count
+        # is now primarily handled by the /capture_biopsy_tile_from_client route
+        # when it successfully processes a frame.
+        # This loop primarily keeps the thread alive and can be used for
+        # periodic checks or more complex continuous processing if needed.
+        
+        # For now, we'll just sleep to prevent busy-waiting.
+        # The real "continuous capture" is driven by the client sending frames.
+        time.sleep(1) 
 
-        time.sleep(2) # Capture a tile every 2 seconds (simulated video frame rate)
+        # Example: if you wanted to check if client stopped sending frames
+        # and automatically stop continuous capture after a timeout:
+        # if time.time() - last_client_frame_timestamp > 5:
+        #     is_capturing_continuously = False
+        #     with app.test_request_context():
+        #         flash("Continuous capture stopped due to inactivity.", 'warning')
+        #     print("DEBUG: Continuous capture stopped due to client inactivity.")
+        #     break
 
-def capture_biopsy_tile_internal():
+
+def capture_biopsy_tile_internal(frame_data):
     """
-    Internal function to capture a single tile, without Flask request/response.
-    Used by the continuous capture worker or manual capture route.
-    Saves the individual tile and updates the real-time stitched canvas.
+    Internal function to process a single tile, now receiving frame_data (base64 string).
+    Decodes base64, converts to OpenCV format, saves, updates stitched canvas,
+    and advances the current_cell pointer.
     """
-    global current_cell, stitched_canvas, camera, captured_tiles_count
+    global current_cell, stitched_canvas, captured_tiles_count
 
-    if camera is None:
-        print("Camera not available for internal tile capture.")
+    # Decode base64 image data
+    try:
+        header, encoded = frame_data.split(',', 1)
+        image_bytes = base64.b64decode(encoded)
+        # Convert bytes to numpy array, then to OpenCV image
+        np_arr = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            print("ERROR: Failed to decode image data from client.")
+            return False
+
+    except Exception as e:
+        print(f"ERROR: Failed to decode client-sent image data: {e}")
+        return False
+
+    patient_id = session.get('current_patient_id')
+    if not patient_id:
+        print("No patient ID in session, cannot save tile.")
         return False
 
     # Check if we've already captured all tiles
-    if current_cell[0] >= GRID_ROWS or (current_cell[0] == GRID_ROWS - 1 and current_cell[1] >= GRID_COLS):
+    if captured_tiles_count >= total_tiles_needed:
         print("Attempted to capture tile beyond grid boundaries. Capture already complete.")
         return False # Indicate no more tiles to capture
 
     r, c = current_cell
-    ok, frame = camera.read()
-    if not ok:
-        print("Camera error: Could not read frame during internal capture. Attempting to re-open.")
-        try:
-            camera.release() # Release potentially stuck camera
-            camera = cv2.VideoCapture(0) # Try to re-initialize
-            time.sleep(1) # Give camera time to initialize
-            ok, frame = camera.read() # Try reading again
-            if not ok:
-                raise IOError("Camera still not accessible after re-initialization.")
-        except Exception as e:
-            print(f"ERROR: Camera re-initialization failed during tile capture: {e}")
-            return False # Indicate failure
+    
+    # Generate a unique filename for the individual tile
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3] # Include milliseconds
+    fname = f"patient_{patient_id}_tile_{r}_{c}_{timestamp}.jpg"
+    path = os.path.join(app.config['BIOPY_CAPTURE_FOLDER'], fname)
+    cv2.imwrite(path, frame)
+    print(f"Captured tile {r},{c} for patient {patient_id} and saved to {path}")
 
-    patient_id = session.get('current_patient_id')
-    if patient_id:
-        # Generate a unique filename for the individual tile
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3] # Include milliseconds
-        fname = f"patient_{patient_id}_tile_{r}_{c}_{timestamp}.jpg"
-        path = os.path.join(app.config['BIOPY_CAPTURE_FOLDER'], fname)
-        cv2.imwrite(path, frame)
-        print(f"Captured tile {r},{c} for patient {patient_id} and saved to {path}")
-
-        # Store the path in the session for final stitching
-        if 'current_patient_captured_tiles' not in session:
-            session['current_patient_captured_tiles'] = []
-        # Ensure we don't add duplicate paths if somehow called multiple times for same cell
-        if path not in session['current_patient_captured_tiles']:
-            session['current_patient_captured_tiles'].append(path)
-            session.modified = True # Mark session as modified
-            print(f"Added tile path to session: {path}")
-    else:
-        print("No patient ID in session, skipping saving tile to disk.")
+    # Store the path in the session for final stitching
+    if 'current_patient_captured_tiles' not in session:
+        session['current_patient_captured_tiles'] = []
+    # Ensure we don't add duplicate paths if somehow called multiple times for same cell
+    if path not in session['current_patient_captured_tiles']:
+        session['current_patient_captured_tiles'].append(path)
+        session.modified = True # Mark session as modified
+        print(f"Added tile path to session: {path}")
 
     # Update the real-time stitched canvas (simple placement)
     place_on_canvas(frame, r, c)
@@ -443,65 +349,6 @@ def capture_biopsy_tile_internal():
         current_cell[1] = 0
         current_cell[0] += 1
     return True # Indicate success
-
-def perform_advanced_stitching(patient_id):
-    """
-    Performs advanced image stitching using OpenCV for the final composite image.
-    Retrieves individual tile paths from the session.
-    Returns the stitched image (NumPy array) or None if stitching fails.
-    """
-    if 'current_patient_captured_tiles' not in session:
-        print("No captured tiles found in session for advanced stitching.")
-        return None
-
-    # Filter tiles for the current patient (though session should already be scoped)
-    # This ensures we only stitch tiles relevant to the current patient session
-    tile_paths = [
-        path for path in session['current_patient_captured_tiles']
-        if f"patient_{patient_id}" in os.path.basename(path)
-    ]
-
-    if not tile_paths:
-        print("No tile paths available for stitching.")
-        return None
-
-    # Sort tile paths to ensure correct order for stitching (important for grid layouts)
-    # This is a simple sort, more robust sorting might be needed for complex patterns
-    tile_paths.sort() 
-
-    images = []
-    for path in tile_paths:
-        img = cv2.imread(path)
-        if img is not None:
-            images.append(img)
-        else:
-            print(f"Warning: Could not read image from path: {path}")
-
-    if not images:
-        print("No valid images loaded for stitching.")
-        return None
-
-    # Create a Stitcher object
-    # cv2.Stitcher_SCANS is often good for images captured in a grid/scan pattern
-    # cv2.Stitcher_PANORAMA is for more general panoramic stitching
-    stitcher = cv2.Stitcher_create(cv2.Stitcher_SCANS) # Or cv2.Stitcher_PANORAMA
-
-    # Perform stitching
-    status, stitched_image = stitcher.stitch(images)
-
-    if status == cv2.Stitcher_OK:
-        print("Advanced stitching successful!")
-        return stitched_image
-    else:
-        print(f"Advanced stitching failed with status: {status}")
-        # Provide more specific error messages based on status
-        if status == cv2.Stitcher_ERR_NEED_MORE_IMGS:
-            print("Stitching error: Need more images or insufficient overlap.")
-        elif status == cv2.Stitcher_ERR_HOMOGRAPHY_EST_FAIL:
-            print("Stitching error: Homography estimation failed (not enough matching features).")
-        elif status == cv2.Stitcher_ERR_CAMERA_PARAMS_ADJUST_FAIL:
-            print("Stitching error: Camera parameters adjustment failed.")
-        return None
 
 
 # --- ROUTES ---
@@ -781,18 +628,12 @@ def clear_patient_session():
     captured_tiles_count = 0 # Reset captured tiles count
 
     # Re-initialize stitched_canvas with black pixels based on typical camera resolution
-    # Only if camera is available
-    if camera and camera.isOpened():
-        success, frame_for_dims = camera.read()
-        if success:
-            set_cell_dims(frame_for_dims.shape[0], frame_for_dims.shape[1])
-            flash('Biopsy capture session reset. You can start capturing new tiles.', 'info')
-        else:
-            flash('Biopsy capture session reset, but camera could not be accessed to re-initialize canvas. Please ensure camera is connected.', 'warning')
-            print("DEBUG: Warning: Camera not accessible during reset_biopsy_capture_session to re-initialize stitched_canvas.")
-    else:
-        flash('Biopsy capture session reset. Camera is not available.', 'info')
-        print("DEBUG: Camera not available, skipping stitched_canvas re-initialization during reset.")
+    # This part is still needed for the stitched_canvas even if camera is client-side
+    # as we need initial dimensions for the stitched_canvas.
+    # We'll use a default size if no camera frame is received yet.
+    if stitched_canvas is None:
+        set_cell_dims(480, 640) # Default to a common webcam resolution for initial canvas
+        print("DEBUG: Stitched canvas re-initialized with default dimensions during reset.")
 
 
     print(f"DEBUG: Patient session cleared. Session: {session}")
@@ -871,6 +712,7 @@ def upload_camera_image():
     """
     Handles image data sent from the frontend camera capture.
     Decodes base64, saves the image, and updates session flags.
+    This is for the initial slide upload, not continuous biopsy capture tiles.
     """
     if 'user_id' not in session:
         return jsonify(status='error', message='Authentication missing.'), 403
@@ -897,7 +739,7 @@ def upload_camera_image():
         else:
             return jsonify(status='error', message='Unsupported image format.'), 400
 
-        filename = f"camera_capture_{session['current_patient_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+        filename = f"camera_capture_initial_{session['current_patient_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
         with open(filepath, 'wb') as f:
@@ -910,11 +752,11 @@ def upload_camera_image():
         session['current_patient_captured_tiles'] = [] # Initialize list for captured tile paths
         session.modified = True # Explicitly mark session as modified
 
-        print(f"DEBUG: Camera image uploaded. Session: {session}")
-        return jsonify(status='success', message='Camera image uploaded successfully.')
+        print(f"DEBUG: Camera initial slide image uploaded. Session: {session}")
+        return jsonify(status='success', message='Camera initial slide image uploaded successfully.')
 
     except Exception as e:
-        print(f"DEBUG: Error processing camera image upload: {e}")
+        print(f"DEBUG: Error processing camera initial slide image upload: {e}")
         return jsonify(status='error', message=f'Failed to process image: {e}'), 500
 
 
@@ -964,87 +806,57 @@ def confirm_biopsy_region():
     return ('', 204) # 204 No Content, indicating success
 
 
-# --- NEW ROUTES FOR REAL-TIME CAMERA CAPTURE AND STITCHING ---
-
-@app.route('/live_video_feed')
-def live_video_feed():
+# --- NEW ROUTE: Receive Individual Biopsy Tiles from Client ---
+@app.route("/capture_biopsy_tile_from_client", methods=["POST"])
+def capture_biopsy_tile_from_client():
     """
-    Streams the live camera feed with grid overlay to the web page.
-    Requires user to be logged in, patient active, slide uploaded, and region selected.
+    Receives a single base64-encoded image frame from the client-side camera.
+    Processes it as a biopsy tile.
     """
     if 'user_id' not in session:
-        print("DEBUG: Live feed access denied - no user in session.")
-        return Response("Access Denied", status=403)
+        return jsonify(status='error', message='Authentication missing.'), 403
     if not (session.get('current_patient_id') and
             session.get('slide_uploaded_for_current_patient_flag') and
             session.get('biopsy_region_selected_flag')):
-        print("DEBUG: Live feed access denied - workflow incomplete.")
-        return Response("Camera feed not available. Please complete previous workflow steps.", status=403)
-
-    return Response(gen_live_feed(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route('/stitched_biopsy_feed')
-def stitched_biopsy_feed():
-    """
-    Streams the real-time stitched composite image to the web page.
-    Requires user to be logged in, patient active, slide uploaded, and region selected.
-    """
-    if 'user_id' not in session:
-        print("DEBUG: Stitched feed access denied - no user in session.")
-        return Response("Access Denied", status=403)
-    if not (session.get('current_patient_id') and
-            session.get('slide_uploaded_for_current_patient_flag') and
-            session.get('biopsy_region_selected_flag')):
-        print("DEBUG: Stitched feed access denied - workflow incomplete.")
-        return Response("Stitched feed not available. Please complete previous workflow steps.", status=403)
-
-    return Response(gen_stitched_feed(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-
-@app.route("/capture_biopsy_tile", methods=["POST"])
-def capture_biopsy_tile_route(): # Renamed to avoid conflict with internal function
-    """
-    Captures a single frame from the camera, saves it, updates the stitched canvas,
-    and advances the current_cell pointer to the next grid position.
-    This route is called manually by the frontend.
-    """
-    if 'user_id' not in session:
-        print("DEBUG: Capture tile denied - no user in session.")
-        return ('Access Denied', 403)
-    if not (session.get('current_patient_id') and
-            session.get('slide_uploaded_for_current_patient_flag') and
-            session.get('biopsy_region_selected_flag')):
-        print("DEBUG: Capture tile denied - workflow incomplete.")
-        return ('Workflow step incomplete. Please complete previous workflow steps.', 400)
+        return jsonify(status='error', message='Workflow step incomplete. Please complete previous workflow steps.'), 400
 
     global captured_tiles_count, total_tiles_needed
-    if captured_tiles_count < total_tiles_needed:
-        if capture_biopsy_tile_internal():
-            captured_tiles_count += 1
-            if captured_tiles_count >= total_tiles_needed:
-                # All tiles captured, stop continuous capture if it's running
-                global is_capturing_continuously, capture_thread
-                if is_capturing_continuously:
-                    is_capturing_continuously = False
-                    if capture_thread and capture_thread.is_alive():
-                        capture_thread.join(timeout=5)
-                        print("DEBUG: Continuous capture thread stopped as all tiles are captured.")
+    if captured_tiles_count >= total_tiles_needed:
+        # Already captured all tiles, client should have stopped sending
+        return jsonify(status='capture_complete', message='All tiles already captured.'), 200
+
+    data = request.json
+    image_data_url = data.get('imageData')
+
+    if not image_data_url:
+        return jsonify(status='error', message='No image data provided.'), 400
+
+    if capture_biopsy_tile_internal(image_data_url): # Pass the base64 data to internal function
+        captured_tiles_count += 1
+        if captured_tiles_count >= total_tiles_needed:
+            # All tiles captured, stop continuous capture if it's running
+            global is_capturing_continuously, capture_thread
+            if is_capturing_continuously:
+                is_capturing_continuously = False
+                if capture_thread and capture_thread.is_alive():
+                    capture_thread.join(timeout=5)
+                    print("DEBUG: Continuous capture thread stopped as all tiles are captured.")
+            with app.test_request_context(): # Use test context for flashing outside a request
                 flash("All biopsy sections captured! You can now review and generate the report.", 'success')
             print(f"DEBUG: Tile captured. Current captured count: {captured_tiles_count}. Session: {session}")
-            return ("", 204) # 204 No Content, indicating successful request without new content
-        else:
-            print("DEBUG: Failed to capture tile internally.")
-            return ("Failed to capture tile.", 500)
+            return jsonify(status='success', message='Tile captured. All tiles complete.')
+        print(f"DEBUG: Tile captured. Current captured count: {captured_tiles_count}. Session: {session}")
+        return jsonify(status='success', message='Tile captured.')
     else:
-        flash("All tiles already captured for this session. Proceed to final review or reset.", 'info')
-        print("DEBUG: All tiles already captured.")
-        return ("All tiles already captured.", 200)
+        print("DEBUG: Failed to capture tile internally from client data.")
+        return jsonify(status='error', message='Failed to process client image.'), 500
 
 
 @app.route('/start_continuous_capture', methods=['POST'])
 def start_continuous_capture():
     """
-    Starts the continuous capture thread.
+    Starts the continuous capture thread (now primarily for managing state/messages).
+    The actual image capture is driven by the client.
     """
     if 'user_id' not in session:
         return jsonify(status='error', message='Authentication missing.'), 403
@@ -1061,11 +873,13 @@ def start_continuous_capture():
 
     if not is_capturing_continuously:
         is_capturing_continuously = True
+        # The continuous_capture_worker now primarily manages the state and flashes messages.
+        # It doesn't read from a camera.
         capture_thread = threading.Thread(target=continuous_capture_worker)
         capture_thread.daemon = True # Allow main program to exit even if thread is running
         capture_thread.start()
-        flash('Continuous video capture started.', 'success')
-        print("DEBUG: Continuous capture started.")
+        flash('Continuous video capture started. Please ensure your browser camera is active.', 'success')
+        print("DEBUG: Continuous capture started (client-side expected).")
         return jsonify(status='started')
     print("DEBUG: Continuous capture already started.")
     return jsonify(status='already_started')
@@ -1118,7 +932,9 @@ def get_camera_guidance():
         'next_cell': {'row': next_row, 'col': next_col},
         'focus_level': current_focus,
         'zoom_level': current_zoom,
-        'capture_complete': (captured_tiles_count >= total_tiles_needed) # Send capture status
+        'capture_complete': (captured_tiles_count >= total_tiles_needed), # Send capture status
+        'captured_tiles_count': captured_tiles_count, # Send current count
+        'total_tiles_needed': total_tiles_needed # Send total needed
     })
 
 @app.route('/set_camera_focus', methods=['POST'])
@@ -1189,18 +1005,12 @@ def reset_biopsy_capture_session():
     captured_tiles_count = 0 # Reset captured tiles count
 
     # Re-initialize stitched_canvas with black pixels based on typical camera resolution
-    # Only if camera is available
-    if camera and camera.isOpened():
-        success, frame_for_dims = camera.read()
-        if success:
-            set_cell_dims(frame_for_dims.shape[0], frame_for_dims.shape[1])
-            flash('Biopsy capture session reset. You can start capturing new tiles.', 'info')
-        else:
-            flash('Biopsy capture session reset, but camera could not be accessed to re-initialize canvas. Please ensure camera is connected.', 'warning')
-            print("DEBUG: Warning: Camera not accessible during reset_biopsy_capture_session to re-initialize stitched_canvas.")
-    else:
-        flash('Biopsy capture session reset. Camera is not available.', 'info')
-        print("DEBUG: Camera not available, skipping stitched_canvas re-initialization during reset.")
+    # This part is still needed for the stitched_canvas even if camera is client-side
+    # as we need initial dimensions for the stitched_canvas.
+    # We'll use a default size if no camera frame is received yet.
+    if stitched_canvas is None:
+        set_cell_dims(480, 640) # Default to a common webcam resolution for initial canvas
+        print("DEBUG: Stitched canvas re-initialized with default dimensions during reset.")
 
 
     print(f"DEBUG: Biopsy capture session reset. Session: {session}")
