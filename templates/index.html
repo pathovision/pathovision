@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pathovision - Digital Pathology Solutions</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <header class="navbar">
+        <div class="container">
+            <h1 class="site-title"><a href="{{ url_for('home') }}">Pathovision</a></h1>
+            <nav>
+                <ul>
+                    <li><a href="{{ url_for('home') }}" class="active">Home</a></li>
+                    <li><a href="#about">About</a></li>
+                    <li><a href="#innovations">Innovations</a></li>
+                    <li><a href="#gallery">Gallery</a></li>
+                    <li><a href="#testimonials">Testimonials</a></li>
+                    
+                    <li><a href="#contact">Contact</a></li>
+                    {% if 'username' in session %}
+                        <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+                        <li><a href="{{ url_for('logout') }}">Logout ({{ session['username'] }})</a></li>
+                    {% else %}
+                        <li><a href="{{ url_for('login_page') }}">Login</a></li>
+                        <li><a href="{{ url_for('register_page') }}">Register</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <!-- The background-image URL points to hero-bg.jpg in the 'uploads' folder -->
+        <section class="hero-section" style="background-image: url('{{ url_for('static', filename='uploads/hero-bg.jpg') }}'); background-size: cover; background-position: center; background-repeat: no-repeat;">
+            <div class="hero-content">
+                <h2>Revolutionizing Digital Pathology</h2>
+                <p></p>
+            </div>
+        </section>
+
+        <section id="about" class="about-section">
+            <div class="container">
+                <h2 class="section-title">About Pathovision</h2>
+                <p class="section-description">
+                    Pathovision is at the forefront of digital pathology, transforming traditional microscopy with cutting-edge AI and imaging technologies. We are dedicated to providing innovative solutions that enhance diagnostic precision, streamline workflows, and ultimately improve patient outcomes.
+                    <br>Delivering complete biopsy visualization—live, high-resolution, and ready for interpretation.
+                </p>
+
+                <div class="about-features">
+                    <div class="feature-item">
+                        <h3>Precision Diagnosis</h3>
+                        <p>Leveraging AI algorithms for highly accurate and consistent pathological analysis.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>Efficiency & Speed</h3>
+                        <p>Accelerating diagnostic workflows, reducing turnaround times for critical cases.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>Global Accessibility</h3>
+                        <p>Enabling remote collaboration and expert consultations worldwide.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="innovations" class="innovations-section">
+            <div class="container">
+                <h2 class="section-title">Our Innovations</h2>
+                <p class="section-description">
+                    At Pathovision, we are constantly pushing the boundaries of what's possible in digital pathology. Our research and development focuses on creating tools that empower pathologists and researchers.
+                </p>
+
+                <div class="innovations-grid">
+                    <div class="innovation-item">
+                        <h3>AI-Powered Image Analysis</h3>
+                        <p>Automated detection and quantification of disease markers with unparalleled accuracy.</p>
+                    </div>
+                    <div class="innovation-item">
+                        <h3>Cloud-Based Pathology Platform</h3>
+                        <p>Secure and scalable platform for seamless sharing, viewing, and analysis of digital slides.</p>
+                    </div>
+                    <div class="innovation-item">
+                        <h3>Integrated Workflow Solutions</h3>
+                        <p>From slide scanning to final report, our solutions integrate smoothly into existing lab environments.</p>
+                    </div>
+                    <div class="innovation-item">
+                        <h3>Predictive Analytics for Disease Progression</h3>
+                        <p>Advanced models to forecast disease behavior and guide personalized treatment strategies.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="gallery" class="gallery-section">
+            <div class="container">
+                <h2 class="section-title">Our Gallery</h2>
+                <p class="section-description">
+                    Explore high-resolution images and visualizations from our digital pathology platform, showcasing the clarity and detail our technology provides.
+                </p>
+                <div class="image-gallery">
+                    <div class="gallery-item"><img src="{{ url_for('static', filename='images/gallery-1.jpg') }}" alt="Digital Pathology Sample 1"></div>
+                    <div class="gallery-item"><img src="{{ url_for('static', filename='images/gallery-2.jpg') }}" alt="Digital Pathology Sample 2"></div>
+                    <div class="gallery-item"><img src="{{ url_for('static', filename='images/gallery-3.jpg') }}" alt="Digital Pathology Sample 3"></div>
+                    <div class="gallery-item"><img src="{{ url_for('static', filename='images/gallery-4.jpg') }}" alt="Digital Pathology Sample 4"></div>
+                    <div class="gallery-item"><img src="{{ url_for('static', filename='images/gallery-5.jpg') }}" alt="Digital Pathology Sample 5"></div>
+                    <div class="gallery-item"><img src="{{ url_for('static', filename='images/gallery-6.jpg') }}" alt="Digital Pathology Sample 6"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="testimonials" class="testimonials-section">
+            <div class="container">
+                <h2 class="section-title">What Our Users Say</h2>
+                <p class="section-description">
+                    Hear directly from pathologists and researchers who are transforming their work with Pathovision.
+                </p>
+                <div class="testimonials-grid">
+                    <div class="testimonial-card">
+                        <img src="{{ url_for('static', filename='images/testimonials-1.jpg') }}" class="testimonial-img" alt="Testimonial User 1">
+                        <h4>Dr. Sarah Chen</h4>
+                        <p class="testimonial-role">Chief Pathologist, City Hospital</p>
+                        <blockquote>"Pathovision's AI-driven analysis has dramatically improved our diagnostic accuracy and reduced our turnaround times. It's a game-changer!"</blockquote>
+                    </div>
+                    <div class="testimonial-card">
+                        <img src="{{ url_for('static', filename='images/testimonials-2.jpg') }}" class="testimonial-img" alt="Testimonial User 2">
+                        <h4>Prof. David Lee</h4>
+                        <p class="testimonial-role">Researcher, BioMed Institute</p>
+                        <blockquote>"The cloud platform allows seamless collaboration with colleagues globally. Data sharing and analysis have never been easier."</blockquote>
+                    </div>
+                    <div class="testimonial-card">
+                        <img src="{{ url_for('static', filename='images/testimonials-3.jpg') }}" class="testimonial-img" alt="Testimonial User 3">
+                        <h4>Dr. Emily White</h4>
+                        <p class="testimonial-role">Oncologist, Cancer Care Center</p>
+                        <blockquote>"The precision of Pathovision's tools gives me greater confidence in patient stratification and treatment planning."</blockquote>
+                    </div>
+                    <div class="testimonial-card">
+                        <img src="{{ url_for('static', filename='images/testimonials-4.jpg') }}" class="testimonial-img" alt="Testimonial User 4">
+                        <h4>Mr. John Smith</h4>
+                        <p class="testimonial-role">Lab Director, Diagnostic Labs Inc.</p>
+                        <blockquote>"Integrating Pathovision into our workflow was surprisingly smooth, and the support team is exceptional. Highly recommend."</blockquote>
+                    </div>
+                    <div class="testimonial-card">
+                        <img src="{{ url_for('static', filename='images/testimonials-5.jpg') }}" class="testimonial-img" alt="Testimonial User 5">
+                        <h4>Dr. Aisha Khan</h4>
+                        <p class="testimonial-role">Histopathologist, University Hospital</p>
+                        <blockquote>"The intuitive interface and powerful features have made digital pathology truly accessible for our entire team."</blockquote>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        
+
+        <section id="contact" class="contact">
+            <div class="container">
+                <div class="section-title">Contact Us</div>
+                <p class="section-description">
+                    Have questions or want to learn more about Pathovision? Reach out to us!
+                </p>
+
+                <div class="row">
+                    <div class="col-lg-12 full-width-info-box">
+                        <div class="info-box mb-4">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <h3>Our Address</h3>
+                            <p>123 Digital Lane</p>
+                            <p>Suite 400</p>
+                            <p>MedCity, State 12345</p>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-12 full-width-info-box">
+                        <div class="info-box">
+                            <i class="far fa-envelope"></i>
+                            <h3>Email Us</h3>
+                            <p>pathovision23@gmail.com</p>
+                            <p>support@pathovision.com</p>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-12 full-width-info-box">
+                        <div class="info-box">
+                            <i class="fas fa-phone-alt"></i>
+                            <h3>Call Us</h3>
+                            <p>0891-9874564321</p>
+                            <p>+1 6678 254446 99</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 Pathovision. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

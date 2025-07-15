@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pathovision - Dashboard</title>
+    <!-- Google Fonts - Montserrat and Roboto -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Your Custom Stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <header class="navbar">
+        <div class="container">
+            <h1 class="site-title"><a href="{{ url_for('home') }}">Pathovision</a></h1>
+            <nav>
+                <ul>
+                    <li><a href="{{ url_for('home') }}">Home</a></li>
+                    <li><a href="{{ url_for('home') }}#about">About</a></li>
+                    <li><a href="{{ url_for('home') }}#innovations">Innovations</a></li>
+                    <li><a href="{{ url_for('home') }}#gallery">Gallery</a></li>
+                    <li><a href="{{ url_for('home') }}#testimonials">Testimonials</a></li>
+                    <li><a href="{{ url_for('home') }}#contact">Contact</a></li>
+                    {% if 'username' in session %}
+                        <li><a href="{{ url_for('dashboard') }}" class="active">Dashboard</a></li>
+                        <li><a href="{{ url_for('logout') }}">Logout ({{ session['username'] }})</a></li>
+                    {% else %}
+                        <li><a href="{{ url_for('login_page') }}">Login</a></li>
+                        <li><a href="{{ url_for('register_page') }}">Register</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="dashboard-main">
+        <div class="container">
+            <h2 class="section-title">Welcome to Your Dashboard, {{ session['username'] if 'username' in session else 'User' }}!</h2>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <ul class="flashes">
+                        {% for category, message in messages %}
+                            <li class="flash-{{ category }}">{{ message }}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            {% endwith %}
+
+            {# STEP 1: Enter Patient Details #}
+            {% if not patient_active %}
+                <section class="patient-details-section dashboard-card">
+                    <h3 class="section-subtitle">Step 1: Enter Patient Details</h3>
+                    <p>Please provide patient information to proceed with slide analysis.</p>
+                    <form action="{{ url_for('save_patient_details') }}" method="POST" class="patient-details-form">
+                        <div class="form-group">
+                            <label for="patientName">Name:</label>
+                            <input type="text" id="patientName" name="patientName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="patientAge">Age:</label>
+                            <input type="number" id="patientAge" name="patientAge" min="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="patientSex">Sex:</label>
+                            <select id="patientSex" name="patientSex" required>
+                                <option value="">Select Sex</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="patientDate">Date:</label>
+                            <input type="date" id="patientDate" name="patientDate" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save Patient Details</button>
+                    </form>
+                </section>
+            {% else %}
+                {# Display current patient info and options to change patient #}
+                <section class="current-patient-info dashboard-card">
+                    <h3 class="section-subtitle">Current Patient: {{ current_patient_name }} (ID: {{ current_patient.id }})</h3>
+                    <p>Proceed to the next step for slide analysis.</p>
+                    <div class="dashboard-actions">
+                        <a href="{{ url_for('clear_patient_session') }}" class="btn btn-secondary"><i class="fas fa-user-plus"></i> Change Patient / New Patient</a>
+                    </div>
+                </section>
+
+                {# STEP 2: Upload Biopsy Slide Image (File Upload OR Camera Capture) #}
+                {% if not slide_uploaded_for_current_patient %}
+                    <section class="slide-upload-section dashboard-card">
+                        <h3 class="section-subtitle">Step 2: Upload Biopsy Slide Image</h3>
+                        <p>Choose to upload a slide image from your device or capture one directly using your camera.</p>
+                        
+                        <div class="dashboard-actions mb-4">
+                            <button id="fileUploadModeBtn" class="btn btn-primary {% if not camera_mode_active %}active-mode{% endif %}"><i class="fas fa-upload"></i> Upload from File</button>
+                            <button id="cameraCaptureModeBtn" class="btn btn-secondary {% if camera_mode_active %}active-mode{% endif %}"><i class="fas fa-camera"></i> Capture from Camera</button>
+                        </div>
+
+                        {# File Upload Interface #}
+                        <div id="fileUploadInterface" style="{% if camera_mode_active %}display: none;{% endif %}">
+                            <form action="{{ url_for('upload_slide') }}" method="POST" enctype="multipart/form-data" class="upload-form">
+                                <div class="form-group">
+                                    <label for="slideImage">Choose Slide Photo:</label>
+                                    <input type="file" id="slideImage" name="slideImage" accept="image/*" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Upload Slide</button>
+                            </form>
+                        </div>
+
+                        {# Camera Capture Interface #}
+                        <div id="cameraCaptureInterface" style="{% if not camera_mode_active %}display: none;{% endif %} text-align: center;">
+                            <div id="cameraLiveFeed" class="mb-4">
+                                <video id="cameraFeed" width="640" height="480" autoplay style="border: 2px solid #007bff; border-radius: 8px; max-width: 100%; height: auto;"></video>
+                                <canvas id="cameraCanvas" style="display: none;"></canvas> {# Hidden canvas for capturing frame #}
+                            </div>
+                            <div id="cameraControls" class="dashboard-actions">
+                                <button id="takePhotoBtn" class="btn btn-primary"><i class="fas fa-camera"></i> Take Photo</button>
+                            </div>
+                            <div id="capturedPhotoPreview" class="mt-4" style="display: none;">
+                                <p><strong>Captured Photo Preview:</strong></p>
+                                <img id="capturedPhoto" src="" alt="Captured Biopsy Slide" style="max-width: 100%; height: auto; border: 2px solid #28a745; border-radius: 8px;">
+                                <div class="dashboard-actions mt-3">
+                                    <button id="confirmPhotoBtn" class="btn btn-primary"><i class="fas fa-check-circle"></i> Confirm Photo</button>
+                                    <button id="retakePhotoBtn" class="btn btn-secondary"><i class="fas fa-redo"></i> Retake Photo</button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                {# STEP 2.5: Select Region on Uploaded Slide #}
+                {% elif not biopsy_region_selected %}
+                    <section class="biopsy-region-selection-section dashboard-card">
+                        <h3 class="section-subtitle">Step 2.5: Select Region of Interest on Slide</h3>
+                        <p>Draw a rectangle on the uploaded slide to define the biopsy tissue area for capture.</p>
+                        <div class="canvas-container">
+                            <canvas id="slideCanvas"></canvas>
+                            <div id="canvasErrorMessage" style="color: red; margin-top: 10px; text-align: center; font-weight: bold; display: none; padding: 10px; border: 1px solid red; border-radius: 5px; background-color: #ffebeb;">
+                                <i class="fas fa-exclamation-triangle"></i> Error loading image. Please try re-uploading or check your browser's console (F12) for details.
+                            </div>
+                        </div>
+                        <div class="dashboard-actions">
+                            <button id="confirmRegionButton" class="btn btn-primary"><i class="fas fa-check-circle"></i> Confirm Region</button>
+                            <a href="{{ url_for('clear_patient_session') }}" class="btn btn-secondary"><i class="fas fa-redo"></i> Re-upload Slide</a> {# Changed to clear patient session to restart workflow from patient details #}
+                        </div>
+                    </section>
+                {# STEP 3: Live Biopsy Camera Capture & Real-Time Stitching #}
+                {% elif not capture_complete %}
+                    <section class="biopsy-camera-section dashboard-card">
+                        <h3 class="section-subtitle">Step 3: Live Biopsy Camera & Real-Time Stitching (Grid: {{ rows }} x {{ cols }})</h3>
+                        <p>Capture each tile of the biopsy grid. The stitched composite will update in real-time. Follow the guidance on the live feed.</p>
+                        
+                        <div class="camera-feeds-wrapper">
+                            <div class="feed-container">
+                                <p><strong>Live Feed</strong></p>
+                                <img src="{{ url_for('live_video_feed') }}" width="480" height="360" alt="Live Camera Feed">
+                                <div class="camera-controls">
+                                    <div class="control-group">
+                                        <label for="focusRange">Focus: <span id="focusValue">{{ current_focus }}</span>%</label>
+                                        <input type="range" id="focusRange" min="0" max="100" value="{{ current_focus }}">
+                                    </div>
+                                    <div class="control-group">
+                                        <label for="zoomRange">Zoom: <span id="zoomValue">{{ current_zoom }}</span>%</label>
+                                        <input type="range" id="zoomRange" min="0" max="100" value="{{ current_zoom }}">
+                                    </div>
+                                </div>
+                                <button id="toggleCaptureButton" class="btn btn-primary">
+                                    {% if is_capturing_continuously %}
+                                        <i class="fas fa-stop-circle"></i> Stop Video Capture
+                                    {% else %}
+                                        <i class="fas fa-play-circle"></i> Start Video Capture
+                                    {% endif %}
+                                </button>
+                                <p id="guidanceMessage" class="camera-guidance-message"></p>
+                            </div>
+
+                            <div class="feed-container">
+                                <p><strong>Real-Time Stitch</strong></p>
+                                <img src="{{ url_for('stitched_biopsy_feed') }}" width="480" height="360" alt="Real-Time Stitched Composite">
+                                <p class="captured-tiles">Captured Tiles: <span id="capturedTilesCount">0</span> / {{ rows * cols }}</p>
+                                <a href="{{ url_for('download_stitched_biopsy') }}" class="btn btn-primary"><i class="fas fa-download"></i> Download Composite</a>
+                            </div>
+                        </div>
+                        <div class="dashboard-actions">
+                            <a href="{{ url_for('reset_biopsy_capture_session') }}" class="btn btn-secondary"><i class="fas fa-redo"></i> Reset Biopsy Capture</a>
+                        </div>
+                    </section>
+                {# PHASE 3: Final Review, Report, Archive #}
+                {% else %}
+                    <section class="final-review-section dashboard-card">
+                        <h3 class="section-subtitle">Step 4: Final Review & Report Generation</h3>
+                        <p>All biopsy sections have been captured and stitched. Review the composite image and generate your diagnostic report.</p>
+
+                        <div class="stitched-image-viewer">
+                            <p><strong>Final Stitched Biopsy Image</strong></p>
+                            {# Use final_stitched_display_url for the high-quality stitched image #}
+                            <img id="finalStitchedImage" src="{{ final_stitched_display_url }}" alt="Final Stitched Biopsy" class="processed-slide-image">
+                            <div class="zoom-controls">
+                                <button id="zoomInButton" class="btn btn-icon"><i class="fas fa-search-plus"></i></button>
+                                <button id="zoomOutButton" class="btn btn-icon"><i class="fas fa-search-minus"></i></button>
+                                <button id="resetZoomButton" class="btn btn-icon"><i class="fas fa-redo"></i></button>
+                            </div>
+                        </div>
+
+                        <div class="diagnostic-report-section">
+                            <h4>Diagnostic Report for Patient: {{ current_patient_name }}</h4>
+                            <textarea id="diagnosticReportText" placeholder="Enter diagnostic findings here..." rows="10">{{ current_patient.diagnostic_report if current_patient and current_patient.diagnostic_report else '' }}</textarea>
+                            <button id="saveReportButton" class="btn btn-primary"><i class="fas fa-save"></i> Save Diagnostic Report</button>
+                        </div>
+
+                        <div class="dashboard-actions final-actions">
+                            <button id="archiveCaseButton" class="btn btn-secondary"><i class="fas fa-archive"></i> Archive Case</button>
+                            <a href="{{ url_for('clear_patient_session') }}" class="btn btn-primary"><i class="fas fa-plus-circle"></i> Start New Patient Case</a>
+                        </div>
+                    </section>
+                {% endif %}
+            {% endif %}
+
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 Pathovision. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        (function() { // Start IIFE for scope isolation
+            // Flask's Jinja2 template engine will render these variables
+            const GRID_ROWS = parseInt("{{ rows | default(3) }}");
+            const GRID_COLS = parseInt("{{ cols | default(3) }}");
+            let currentPatientId = {% if current_patient %}{{ current_patient.id }}{% else %}null{% endif %}; 
+            let isCapturingContinuously = {{ 'true' if is_capturing_continuously else 'false' }};
+            let captureComplete = {{ 'true' if capture_complete else 'false' }};
+            let cameraModeActive = {{ 'true' if camera_mode_active else 'false' }};
+
+            // Auto-hide flash messages after 5 seconds
+            document.addEventListener('DOMContentLoaded', () => {
+                const flashes = document.querySelectorAll('.flashes li');
+                flashes.forEach(flash => {
+                    setTimeout(() => {
+                        flash.classList.add('fade-out');
+                        flash.addEventListener('transitionend', () => flash.remove());
+                    }, 5000);
+                });
+
+                // Set current date for patientDate input
+                const patientDateInput = document.getElementById('patientDate');
+                if (patientDateInput && !patientDateInput.value) {
+                    const today = new Date();
+                    const yyyy = today.getFullYear();
+                    const mm = String(today.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+                    const dd = String(today.getDate()).padStart(2, '0');
+                    patientDateInput.value = `${yyyy}-${mm}-${dd}`;
+                }
+
+                // --- DEBUGGING: Log all clicks on the body ---
+                document.body.addEventListener('click', (e) => {
+                    console.log("DEBUG: Body click detected. Target element:", e.target);
+                    if (e.target.tagName === 'A') {
+                        console.log("DEBUG: Clicked an anchor tag. Href:", e.target.href);
+                    }
+                });
+
+                // --- DEBUGGING: Specific check for navbar title click ---
+                const siteTitleLink = document.querySelector('.site-title a');
+                if (siteTitleLink) {
+                    siteTitleLink.addEventListener('click', (e) => {
+                        console.log("DEBUG: Pathovision site title link clicked!");
+                    });
+                }
+
+
+                // --- Camera Capture Elements (New) ---
+                const fileUploadModeBtn = document.getElementById('fileUploadModeBtn');
+                const cameraCaptureModeBtn = document.getElementById('cameraCaptureModeBtn');
+                const fileUploadInterface = document.getElementById('fileUploadInterface');
+                const cameraCaptureInterface = document.getElementById('cameraCaptureInterface');
+                const cameraFeed = document.getElementById('cameraFeed');
+                const cameraCanvas = document.getElementById('cameraCanvas');
+                const takePhotoBtn = document.getElementById('takePhotoBtn');
+                const capturedPhotoPreview = document.getElementById('capturedPhotoPreview');
+                const capturedPhoto = document.getElementById('capturedPhoto');
+                const confirmPhotoBtn = document.getElementById('confirmPhotoBtn');
+                const retakePhotoBtn = document.getElementById('retakePhotoBtn');
+                let cameraStream = null; // To hold the MediaStream object
+
+                // Function to start the camera
+                async function startCamera() {
+                    try {
+                        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                        cameraFeed.srcObject = cameraStream;
+                        cameraFeed.play();
+                        console.log("Camera started successfully.");
+                    } catch (err) {
+                        console.error("Error accessing camera: ", err);
+                        alert("Could not access camera. Please ensure it's connected and permissions are granted. Error: " + err.message);
+                        // Fallback to file upload mode if camera fails
+                        switchMode('file');
+                    }
+                }
+
+                // Function to stop the camera
+                function stopCamera() {
+                    if (cameraStream) {
+                        cameraStream.getTracks().forEach(track => track.stop());
+                        cameraFeed.srcObject = null;
+                        cameraStream = null;
+                        console.log("Camera stopped.");
+                    }
+                }
+
+                // Function to switch between file upload and camera capture modes
+                function switchMode(mode) {
+                    if (mode === 'camera') {
+                        fileUploadInterface.style.display = 'none';
+                        cameraCaptureInterface.style.display = 'block';
+                        fileUploadModeBtn.classList.remove('active-mode');
+                        cameraCaptureModeBtn.classList.add('active-mode');
+                        startCamera();
+                        cameraModeActive = true; // Update JS flag
+                        // Set session variable via fetch to remember mode
+                        fetch('{{ url_for("set_camera_mode_active") }}', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: true }) });
+                    } else { // mode === 'file'
+                        stopCamera();
+                        cameraCaptureInterface.style.display = 'none';
+                        fileUploadInterface.style.display = 'block';
+                        cameraCaptureModeBtn.classList.remove('active-mode');
+                        fileUploadModeBtn.classList.add('active-mode');
+                        cameraModeActive = false; // Update JS flag
+                        // Set session variable via fetch to remember mode
+                        fetch('{{ url_for("set_camera_mode_active") }}', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: false }) });
+                    }
+                    // Reset photo preview when switching modes
+                    capturedPhotoPreview.style.display = 'none';
+                    cameraFeed.style.display = 'block';
+                    takePhotoBtn.style.display = 'block';
+                }
+
+                // Initialize mode based on Flask's camera_mode_active
+                if (cameraModeActive) {
+                    switchMode('camera');
+                } else {
+                    switchMode('file');
+                }
+
+                // Event Listeners for mode switching buttons
+                if (fileUploadModeBtn) {
+                    fileUploadModeBtn.addEventListener('click', () => switchMode('file'));
+                }
+                if (cameraCaptureModeBtn) {
+                    cameraCaptureModeBtn.addEventListener('click', () => switchMode('camera'));
+                }
+
+                // Event Listener for "Take Photo" button
+                if (takePhotoBtn) {
+                    takePhotoBtn.addEventListener('click', () => {
+                        if (cameraStream) {
+                            const context = cameraCanvas.getContext('2d');
+                            cameraCanvas.width = cameraFeed.videoWidth;
+                            cameraCanvas.height = cameraFeed.videoHeight;
+                            context.drawImage(cameraFeed, 0, 0, cameraCanvas.width, cameraCanvas.height);
+                            const imageDataURL = cameraCanvas.toDataURL('image/jpeg', 0.9); // Get JPEG data URL
+
+                            capturedPhoto.src = imageDataURL;
+                            capturedPhotoPreview.style.display = 'block';
+                            cameraFeed.style.display = 'none'; // Hide live feed
+                            takePhotoBtn.style.display = 'none'; // Hide take photo button
+                        } else {
+                            alert("Camera not active. Please start camera first.");
+                        }
+                    });
+                }
+
+                // Event Listener for "Confirm Photo" button
+                if (confirmPhotoBtn) {
+                    confirmPhotoBtn.addEventListener('click', async () => {
+                        const imageDataURL = capturedPhoto.src;
+                        if (!imageDataURL || imageDataURL === window.location.href) { // Check if image is actually set
+                            alert("No photo captured to confirm.");
+                            return;
+                        }
+
+                        // Send the image data to Flask backend
+                        try {
+                            const response = await fetch('{{ url_for("upload_camera_image") }}', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ imageData: imageDataURL })
+                            });
+                            const data = await response.json();
+                            if (response.ok && data.status === 'success') {
+                                alert('Photo uploaded successfully! Now, please select the region of interest on the slide.');
+                                window.location.reload(); // Reload to advance workflow
+                            } else {
+                                console.error('Failed to upload photo:', data.message || response.statusText);
+                                alert('Failed to upload photo: ' + (data.message || 'Unknown error'));
+                            }
+                        } catch (error) {
+                            console.error('Network error during photo upload:', error);
+                            alert('Network error during photo upload.');
+                        }
+                    });
+                }
+
+                // Event Listener for "Retake Photo" button
+                if (retakePhotoBtn) {
+                    retakePhotoBtn.addEventListener('click', () => {
+                        capturedPhotoPreview.style.display = 'none';
+                        cameraFeed.style.display = 'block'; // Show live feed again
+                        takePhotoBtn.style.display = 'block'; // Show take photo button
+                        capturedPhoto.src = ""; // Clear previous photo
+                    });
+                }
+
+                // --- Canvas for Region Selection (Phase 1) ---
+                const slideCanvas = document.getElementById('slideCanvas');
+                const confirmRegionButton = document.getElementById('confirmRegionButton');
+                const canvasErrorMessage = document.getElementById('canvasErrorMessage'); // Get the error message div
+                let ctx, img;
+                let isDrawing = false;
+                let startX, startY, currentRect = {};
+
+                // Explicitly check the URL value from Flask
+                const uploadedSlideUrl = "{{ uploaded_slide_url }}";
+                console.log("DEBUG: JavaScript - Value of uploaded_slide_url from Flask:", uploadedSlideUrl);
+
+
+                // Only initialize canvas if it exists and a valid slide URL is provided
+                if (slideCanvas && uploadedSlideUrl && uploadedSlideUrl !== "None" && uploadedSlideUrl !== "") {
+                    ctx = slideCanvas.getContext('2d');
+                    img = new Image();
+                    
+                    // Add onerror handler for debugging image loading failures
+                    img.onerror = (e) => { // Capture the error event
+                        console.error("DEBUG: Image loading failed. Check URL and file existence:", img.src);
+                        console.error("DEBUG: Image error event details:", e);
+                        if (canvasErrorMessage) {
+                            canvasErrorMessage.style.display = 'block'; // Show the error message
+                        }
+                        // Optionally, draw a visible placeholder on canvas if error occurs
+                        ctx.clearRect(0, 0, slideCanvas.width, slideCanvas.height);
+                        ctx.fillStyle = '#f0f0f0'; // Light gray background
+                        ctx.fillRect(0, 0, slideCanvas.width, slideCanvas.height);
+                        ctx.strokeStyle = '#ccc';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(5, 5, slideCanvas.width - 10, slideCanvas.height - 10);
+                        ctx.fillStyle = '#666';
+                        ctx.font = '20px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('Image Load Failed', slideCanvas.width / 2, slideCanvas.height / 2 - 10);
+                        ctx.fillText('Check Console/Network', slideCanvas.width / 2, slideCanvas.height / 2 + 20);
+                    };
+
+                    img.onload = () => {
+                        console.log("DEBUG: Image loaded successfully into Image object:", img.src);
+                        if (canvasErrorMessage) {
+                            canvasErrorMessage.style.display = 'none'; // Hide error message if image loads
+                        }
+
+                        // Set canvas dimensions to match image, while respecting a max width for display
+                        const maxWidth = 800; // Max width for display in the container
+                        let ratio = 1;
+                        if (img.naturalWidth > maxWidth) { // Use naturalWidth/Height for original image dimensions
+                            ratio = maxWidth / img.naturalWidth;
+                        }
+                        slideCanvas.width = img.naturalWidth * ratio;
+                        slideCanvas.height = img.naturalHeight * ratio;
+                        
+                        try {
+                            ctx.drawImage(img, 0, 0, slideCanvas.width, slideCanvas.height);
+                            console.log("DEBUG: Image drawn on canvas successfully.");
+                        } catch (drawError) {
+                            console.error("DEBUG: Error drawing image on canvas:", drawError);
+                            if (canvasErrorMessage) {
+                                canvasErrorMessage.style.display = 'block';
+                                canvasErrorMessage.textContent = `Error drawing image: ${drawError.message}. Check console.`;
+                            }
+                        }
+                    };
+                    img.src = uploadedSlideUrl; // Assign the value from the Jinja2 variable
+                    console.log("DEBUG: Attempting to set img.src to:", img.src);
+
+
+                    slideCanvas.addEventListener('mousedown', (e) => {
+                        isDrawing = true;
+                        const rect = slideCanvas.getBoundingClientRect(); // Get canvas position
+                        startX = e.clientX - rect.left;
+                        startY = e.clientY - rect.top;
+                        currentRect = {}; // Clear previous rectangle
+                        redrawCanvas(); // Clear any previous drawing
+                    });
+
+                    slideCanvas.addEventListener('mousemove', (e) => {
+                        if (!isDrawing) return;
+                        redrawCanvas(); // Redraw image
+
+                        const rect = slideCanvas.getBoundingClientRect();
+                        const currentX = e.clientX - rect.left;
+                        const currentY = e.clientY - rect.top;
+                        
+                        const width = currentX - startX;
+                        const height = currentY - startY;
+
+                        // Ensure rectangle is drawn from top-left to bottom-right
+                        currentRect = {
+                            x: Math.min(startX, currentX),
+                            y: Math.min(startY, currentY),
+                            width: Math.abs(width),
+                            height: Math.abs(height)
+                        };
+
+                        ctx.strokeStyle = 'red';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(currentRect.x, currentRect.y, currentRect.width, currentRect.height);
+                    });
+
+                    slideCanvas.addEventListener('mouseup', () => {
+                        isDrawing = false;
+                        if (currentRect.width > 5 && currentRect.height > 5) { // Ensure a meaningful selection
+                            confirmRegionButton.disabled = false;
+                        } else {
+                            confirmRegionButton.disabled = true;
+                        }
+                    });
+
+                    function redrawCanvas() {
+                        ctx.clearRect(0, 0, slideCanvas.width, slideCanvas.height);
+                        ctx.drawImage(img, 0, 0, slideCanvas.width, slideCanvas.height);
+                    }
+
+                    if (confirmRegionButton) {
+                        confirmRegionButton.addEventListener('click', async () => {
+                            if (!currentRect.width || !currentRect.height) {
+                                alert('Please draw a region on the slide first.');
+                                return;
+                            }
+
+                            // Scale coordinates back to original image dimensions if canvas was scaled
+                            const originalWidth = img.naturalWidth;
+                            const originalHeight = img.naturalHeight;
+                            const canvasWidth = slideCanvas.width;
+                            const canvasHeight = slideCanvas.height;
+
+                            const scaleX = originalWidth / canvasWidth;
+                            const scaleY = originalHeight / canvasHeight;
+
+                            const scaledRect = {
+                                x: Math.round(currentRect.x * scaleX),
+                                y: Math.round(currentRect.y * scaleY),
+                                width: Math.round(currentRect.width * scaleX),
+                                height: Math.round(currentRect.height * scaleY)
+                            };
+
+                            try {
+                                const response = await fetch('{{ url_for("confirm_biopsy_region") }}', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify(scaledRect)
+                                });
+                                if (response.ok) {
+                                    window.location.reload(); // Reload dashboard to advance workflow
+                                } else {
+                                    const errorText = await response.text();
+                                    console.error(`Failed to confirm region: ${errorText}`);
+                                    alert(`Failed to confirm region: ${errorText}`);
+                                }
+                            } catch (error) {
+                                console.error('Network error during region confirmation:', error);
+                                alert('Network error during region confirmation.');
+                            }
+                        });
+                    }
+                } else {
+                    console.warn("DEBUG: Canvas initialization skipped. slideCanvas element not found or uploaded_slide_url is invalid/empty.");
+                    if (canvasErrorMessage) {
+                        canvasErrorMessage.style.display = 'block';
+                        canvasErrorMessage.textContent = "No slide image available to display. Please upload a valid image.";
+                    }
+                }
+
+                // --- Phase 2: Continuous Capture, Guidance, Focus/Zoom Controls ---
+                const toggleCaptureButton = document.getElementById('toggleCaptureButton');
+                const guidanceMessageElement = document.getElementById('guidanceMessage');
+                const focusRange = document.getElementById('focusRange');
+                const focusValueSpan = document.getElementById('focusValue');
+                const zoomRange = document.getElementById('zoomRange');
+                const zoomValueSpan = document.getElementById('zoomValue');
+                const capturedTilesCountSpan = document.getElementById('capturedTilesCount');
+                let guidanceIntervalId;
+
+                async function fetchCameraGuidance() {
+                    try {
+                        const response = await fetch('{{ url_for("get_camera_guidance") }}');
+                        if (response.ok) {
+                            const data = await response.json();
+                            guidanceMessageElement.textContent = data.guidance;
+                            // Calculate captured tiles based on current_cell from backend
+                            const currentCapturedCount = (data.current_cell.row * GRID_COLS) + data.current_cell.col;
+                            capturedTilesCountSpan.textContent = currentCapturedCount;
+                            
+                            // If capture completes, update the flag and reload
+                            if (data.capture_complete && !captureComplete) {
+                                captureComplete = true; // Update local JS flag
+                                clearInterval(guidanceIntervalId); // Stop polling
+                                // Also ensure backend continuous capture is stopped if it was running
+                                if (isCapturingContinuously) {
+                                    stopContinuousCapture(); // This will update the button text/icon
+                                }
+                                // Reload to ensure Flask template renders the final review section
+                                window.location.reload(); 
+                            }
+                        } else {
+                            console.error('Failed to fetch camera guidance.');
+                            guidanceMessageElement.textContent = 'Failed to load guidance.';
+                        }
+                    } catch (error) {
+                        console.error('Network error fetching camera guidance:', error);
+                        guidanceMessageElement.textContent = 'Network error for guidance.';
+                    }
+                }
+
+                async function startContinuousCapture() {
+                    try {
+                        const response = await fetch('{{ url_for("start_continuous_capture") }}', { method: 'POST' });
+                        const data = await response.json();
+                        if (response.ok && data.status === 'started') {
+                            isCapturingContinuously = true; // Update local JS flag
+                            toggleCaptureButton.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Video Capture';
+                            // Start polling for guidance and tile count
+                            guidanceIntervalId = setInterval(fetchCameraGuidance, 1500); // Fetch every 1.5 seconds
+                            fetchCameraGuidance(); // Initial fetch
+                        } else if (response.ok && data.status === 'already_started') {
+                            isCapturingContinuously = true; // Ensure flag is true
+                            toggleCaptureButton.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Video Capture';
+                            if (!guidanceIntervalId) { // If for some reason interval wasn't set
+                                guidanceIntervalId = setInterval(fetchCameraGuidance, 1500);
+                                fetchCameraGuidance();
+                            }
+                        } else if (response.ok && data.status === 'capture_complete') {
+                            // Capture already complete, just update button and guidance
+                            isCapturingContinuously = false; // Ensure flag is false
+                            captureComplete = true; // Ensure flag is true
+                            toggleCaptureButton.innerHTML = '<i class="fas fa-play-circle"></i> Start Video Capture'; // Should be disabled or hidden
+                            guidanceMessageElement.textContent = 'All sections captured! Proceed to final review.';
+                            clearInterval(guidanceIntervalId);
+                            window.location.reload(); // Reload to ensure Flask template renders the final review section
+                        } else {
+                            const errorText = await response.text();
+                            console.error(`Failed to start continuous capture: ${errorText}`);
+                            alert(`Failed to start continuous capture: ${errorText}`);
+                        }
+                    } catch (error) {
+                        console.error('Network error during start continuous capture:', error);
+                        alert('Network error during start continuous capture.');
+                    }
+                }
+
+                async function stopContinuousCapture() {
+                    try {
+                        const response = await fetch('{{ url_for("stop_continuous_capture") }}', { method: 'POST' });
+                        const data = await response.json();
+                        if (response.ok && data.status === 'stopped') {
+                            isCapturingContinuously = false; // Update local JS flag
+                            toggleCaptureButton.innerHTML = '<i class="fas fa-play-circle"></i> Start Video Capture';
+                            clearInterval(guidanceIntervalId); // Stop polling for guidance
+                            guidanceMessageElement.textContent = 'Video capture stopped.';
+                        } else if (response.ok && data.status === 'already_stopped') {
+                            isCapturingContinuously = false; // Ensure flag is false
+                            toggleCaptureButton.innerHTML = '<i class="fas fa-play-circle"></i> Start Video Capture';
+                            clearInterval(guidanceIntervalId);
+                            guidanceMessageElement.textContent = 'Video capture stopped.';
+                        } else {
+                            const errorText = await response.text();
+                            console.error(`Failed to stop continuous capture: ${errorText}`);
+                            alert(`Failed to stop continuous capture: ${errorText}`);
+                        }
+                    } catch (error) {
+                        console.error('Network error during stop continuous capture:', error);
+                        alert('Network error during stop continuous capture.');
+                    }
+                }
+
+                async function sendCameraSetting(type, value) {
+                    try {
+                        const url = type === 'focus' ? '{{ url_for("set_camera_focus") }}' : '{{ url_for("set_camera_zoom") }}';
+                        const payload = type === 'focus' ? { focus_level: value } : { zoom_level: value };
+
+                        await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        // No need to alert on success, updates are visible in feed
+                    } catch (error) {
+                        console.error(`Network error setting ${type}:`, error);
+                    }
+                }
+
+                // Event listeners for Phase 2 elements
+                if (toggleCaptureButton) {
+                    toggleCaptureButton.addEventListener('click', () => {
+                        if (isCapturingContinuously) { // Use local JS flag
+                            stopContinuousCapture();
+                        } else {
+                            startContinuousCapture();
+                        }
+                    });
+                    // Initial state setup for the button based on Flask context
+                    if (isCapturingContinuously) {
+                        toggleCaptureButton.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Video Capture';
+                        // If already capturing, start the guidance polling
+                        if (!guidanceIntervalId) {
+                            guidanceIntervalId = setInterval(fetchCameraGuidance, 1500);
+                            fetchCameraGuidance();
+                        }
+                    } else {
+                        toggleCaptureButton.innerHTML = '<i class="fas fa-play-circle"></i> Start Video Capture';
+                        guidanceMessageElement.textContent = 'Press "Start Video Capture" to begin.';
+                    }
+                }
+
+                if (focusRange) {
+                    focusRange.addEventListener('input', () => {
+                        focusValueSpan.textContent = focusRange.value;
+                        sendCameraSetting('focus', parseInt(focusRange.value));
+                    });
+                }
+
+                if (zoomRange) {
+                    zoomRange.addEventListener('input', () => {
+                        zoomValueSpan.textContent = zoomRange.value;
+                        sendCameraSetting('zoom', parseInt(zoomRange.value));
+                    });
+                }
+
+                // Reset Biopsy Capture Session button
+                const resetBiopsyCaptureSessionButton = document.querySelector('a[href*="reset_biopsy_capture_session"]');
+                if (resetBiopsyCaptureSessionButton) {
+                    resetBiopsyCaptureSessionButton.addEventListener('click', async (e) => {
+                        e.preventDefault(); // Prevent default link navigation
+                        if (confirm("Are you sure you want to reset the biopsy capture session? This will clear all captured tiles for the current patient and restart the capture process.")) {
+                            try {
+                                const response = await fetch(resetBiopsyCaptureSessionButton.href);
+                                if (response.ok) {
+                                    window.location.reload(); // Reload dashboard to update workflow state
+                                } else {
+                                    const errorText = await response.text();
+                                    alert('Failed to reset capture session: ' + errorText);
+                                }
+                            } catch (error) {
+                                console.error('Error resetting capture session:', error);
+                                alert('An error occurred while resetting the capture session.');
+                            }
+                        }
+                    });
+                }
+
+
+                // --- Phase 3: Final Review, Report, Archive ---
+                const finalStitchedImage = document.getElementById('finalStitchedImage');
+                const zoomInButton = document.getElementById('zoomInButton');
+                const zoomOutButton = document.getElementById('zoomOutButton');
+                const resetZoomButton = document.getElementById('resetZoomButton');
+                const diagnosticReportText = document.getElementById('diagnosticReportText');
+                const saveReportButton = document.getElementById('saveReportButton');
+                const archiveCaseButton = document.getElementById('archiveCaseButton');
+
+                let currentZoomLevel = 1.0;
+                const ZOOM_STEP = 0.2;
+                const MAX_ZOOM = 3.0;
+                const MIN_ZOOM = 0.5;
+
+                function applyZoom() {
+                    if (finalStitchedImage) {
+                        finalStitchedImage.style.transform = `scale(${currentZoomLevel})`;
+                        finalStitchedImage.style.transformOrigin = 'center center'; // Keep origin central
+                    }
+                }
+
+                if (zoomInButton) {
+                    zoomInButton.addEventListener('click', () => {
+                        currentZoomLevel = Math.min(MAX_ZOOM, currentZoomLevel + ZOOM_STEP);
+                        applyZoom();
+                    });
+                }
+
+                if (zoomOutButton) {
+                    currentZoomLevel = Math.max(MIN_ZOOM, currentZoomLevel - ZOOM_STEP);
+                    applyZoom();
+                }
+
+                if (resetZoomButton) {
+                    resetZoomButton.addEventListener('click', () => {
+                        currentZoomLevel = 1.0;
+                        applyZoom();
+                    });
+                }
+
+                if (saveReportButton) {
+                    saveReportButton.addEventListener('click', async () => {
+                        if (currentPatientId === null) {
+                            alert("No active patient to save report for.");
+                            return;
+                        }
+                        const reportText = diagnosticReportText.value;
+                        try {
+                            const response = await fetch('{{ url_for("save_diagnostic_report") }}', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ report_text: reportText })
+                            });
+                            const data = await response.json();
+                            if (response.ok && data.status === 'success') {
+                                alert('Diagnostic report saved successfully!');
+                            } else {
+                                console.error('Failed to save report:', data.message || response.statusText);
+                                alert('Failed to save report: ' + (data.message || 'Unknown error'));
+                            }
+                        } catch (error) {
+                            console.error('Network error saving report:', error);
+                            alert('An error occurred while saving the report.');
+                        }
+                    });
+                }
+
+                if (archiveCaseButton) {
+                    archiveCaseButton.addEventListener('click', async () => {
+                        if (currentPatientId === null) {
+                            alert("No active patient to archive.");
+                            return;
+                        }
+                        if (confirm("Are you sure you want to archive this case? This action will finalize the case and clear the current patient session.")) {
+                            try {
+                                const response = await fetch('{{ url_for("archive_case") }}', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' }
+                                });
+                                const data = await response.json();
+                                if (response.ok && data.status === 'success') {
+                                    alert('Case archived successfully! Starting new patient workflow.');
+                                    window.location.reload(); // Reload to clear session and show new patient form
+                                } else {
+                                    console.error('Failed to archive case:', data.message || response.statusText);
+                                    alert('Failed to archive case: ' + (data.message || 'Unknown error'));
+                                }
+                            } catch (error) {
+                                console.error('Network error archiving case:', error);
+                                alert('An error occurred while archiving the case.');
+                            }
+                        }
+                    });
+                }
+            });
+        })(); // End IIFE
+    </script>
+</body>
+</html>

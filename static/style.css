@@ -1,0 +1,1364 @@
+/* Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=Roboto:wght@300;400;500;600;700&display=swap');
+
+/* Basic Resets */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Roboto', sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f8fafd; /* Light background */
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh; /* Ensure footer sticks to bottom */
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* --- General Layout & Typography --- */
+.section-title {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    font-size: 2.5em;
+    color: #2c3e50;
+    text-align: center;
+    margin-bottom: 20px;
+    padding-top: 40px;
+}
+
+/* Style for sub-titles within sections, like "Patient Details" */
+.section-subtitle {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    font-size: 1.8em;
+    color: #007bff; /* Primary brand color */
+    text-align: center;
+    margin-top: 40px; /* Spacing above subtitle */
+    margin-bottom: 30px; /* Spacing below subtitle */
+    border-bottom: 2px solid rgba(0, 123, 255, 0.1); /* Subtle underline */
+    padding-bottom: 10px;
+    display: block; /* Make it a block element to take full width and center its text */
+    width: fit-content; /* Make the border-bottom fit the content */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.section-description {
+    font-family: 'Roboto', sans-serif;
+    font-size: 1.1em;
+    color: #666;
+    text-align: center;
+    margin-bottom: 50px;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* --- Navbar Styles --- */
+.navbar {
+    background-color: #2c3e50; /* Dark blue-grey */
+    padding: 15px 0;
+    color: white;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.navbar .container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.site-title {
+    margin: 0;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    font-size: 1.8em;
+}
+
+.site-title a {
+    color: white;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.site-title a:hover {
+    color: #007bff; /* Pathovision primary blue */
+}
+
+.navbar nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 25px;
+}
+
+.navbar nav ul li a {
+    color: white;
+    text-decoration: none;
+    font-family: 'Roboto', sans-serif;
+    font-weight: 400;
+    font-size: 1.05em;
+    padding: 5px 0;
+    position: relative;
+    transition: color 0.3s ease;
+}
+
+.navbar nav ul li a::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 2px;
+    background-color: #007bff;
+    bottom: 0;
+    left: 0;
+    transition: width 0.3s ease;
+}
+
+.navbar nav ul li a:hover::after,
+.navbar nav ul li a.active::after {
+    width: 100%;
+}
+
+.navbar nav ul li a:hover,
+.navbar nav ul li a.active {
+    color: #007bff;
+}
+
+/* --- Hero Section --- */
+.hero-section {
+    /* Background image styles are now inline in index.html for Flask URL_for */
+    color: white;
+    text-align: center;
+    padding: 100px 20px;
+    height: 500px; /* Example height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background-color: #333; /* Fallback background */
+    overflow: hidden; /* Ensure image doesn't spill */
+}
+
+.hero-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5); /* Dark overlay for readability */
+    z-index: 1; /* Ensure overlay is below content but above background */
+}
+
+.hero-content {
+    position: relative;
+    z-index: 2; /* Ensure content is above the overlay */
+}
+
+.hero-content h2 {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    font-size: 3.5em;
+    margin-bottom: 20px;
+    animation: fadeInDown 1s ease-out;
+}
+
+.hero-content p {
+    font-family: 'Roboto', sans-serif;
+    font-size: 1.5em;
+    max-width: 700px;
+    margin: 0 auto;
+    animation: fadeInUp 1s ease-out 0.5s;
+    opacity: 0; /* Initially hidden for animation */
+    animation-fill-mode: forwards; /* Keep the end state of animation */
+}
+
+/* Animations */
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- About Section --- */
+.about-section {
+    padding: 80px 0;
+    background-color: #ffffff;
+}
+
+.about-description {
+    text-align: center;
+    margin-bottom: 60px;
+    font-size: 1.1em;
+    color: #555;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.about-features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 30px;
+    text-align: center;
+    margin-top: 50px;
+}
+
+.feature-item {
+    background-color: #f9f9f9;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.feature-item:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+}
+
+.feature-item h3 {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    color: #007bff;
+    margin-bottom: 15px;
+    font-size: 1.3em;
+}
+
+.feature-item p {
+    font-family: 'Roboto', sans-serif;
+    color: #666;
+    font-size: 0.95em;
+}
+
+/* --- Innovations Section --- */
+.innovations-section {
+    padding: 80px 0;
+    background-color: #f4f7f6;
+}
+
+.innovations-description {
+    text-align: center;
+    margin-bottom: 60px;
+    font-size: 1.1em;
+    color: #555;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.innovations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 30px;
+    text-align: center;
+}
+
+.innovation-item {
+    background-color: #ffffff;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.innovation-item:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+}
+
+.innovation-item h3 {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    color: #007bff;
+    margin-bottom: 15px;
+    font-size: 1.3em;
+}
+
+.innovation-item p {
+    font-family: 'Roboto', sans-serif;
+    color: #666;
+    font-size: 0.95em;
+}
+
+/* --- Gallery Section --- */
+.gallery-section {
+    padding: 80px 0;
+    background-color: #f4f7f6;
+}
+
+.gallery-description {
+    text-align: center;
+    margin-bottom: 60px;
+    font-size: 1.1em;
+    color: #555;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.image-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.gallery-item {
+    overflow: hidden;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.gallery-item img {
+    width: 100%;
+    height: 200px; /* Fixed height for consistency */
+    object-fit: cover;
+    display: block;
+    transition: transform 0.3s ease;
+}
+
+.gallery-item:hover img {
+    transform: scale(1.05);
+}
+
+.gallery-item:hover {
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* --- Testimonials Section --- */
+.testimonials-section {
+    padding: 80px 0;
+    background-color: #ffffff;
+}
+
+.testimonials-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+    margin-top: 50px;
+}
+
+.testimonial-card {
+    background-color: #f9f9f9;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    text-align: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.testimonial-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+}
+
+.testimonial-card .testimonial-img {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 20px;
+    border: 3px solid #007bff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.testimonial-card h4 {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 5px;
+    font-size: 1.2em;
+}
+
+.testimonial-card .testimonial-role {
+    font-family: 'Roboto', sans-serif;
+    color: #777;
+    font-size: 0.9em;
+    margin-bottom: 15px;
+}
+
+.testimonial-card blockquote {
+    font-style: italic;
+    color: #555;
+    font-size: 0.95em;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 10px;
+}
+
+
+/* --- Contact Section Styles --- */
+.contact {
+    padding: 80px 0;
+    background-color: #f4f7f6; /* Changed background for differentiation */
+}
+
+.contact .info-box {
+    background: #fff;
+    box-shadow: 0 0 29px 0 rgba(68, 88, 144, 0.12);
+    padding: 40px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    text-align: center;
+    transition: all 0.3s ease-in-out;
+}
+
+.contact .info-box i {
+    font-size: 40px;
+    color: #007bff;
+    margin-bottom: 15px;
+}
+
+.contact .info-box h3 {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 20px;
+    color: #2c3e50;
+    font-weight: 700;
+    margin: 0 0 10px 0;
+}
+
+.contact .info-box p {
+    padding: 0;
+    line-height: 24px;
+    font-size: 14px;
+    margin-bottom: 0;
+    color: #666;
+    margin-bottom: 5px; /* Added margin for individual address/email/phone lines */
+}
+
+.contact .info-box p:last-child {
+    margin-bottom: 0;
+}
+
+.contact .info-box:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 35px 0 rgba(68, 88, 144, 0.2);
+}
+
+/* Force contact info boxes to stack one below the other */
+.contact .row {
+    display: flex;
+    flex-direction: column; /* Force items to stack vertically */
+    align-items: center; /* Center the stacked boxes */
+    gap: 30px; /* Spacing between the stacked boxes */
+}
+
+.contact .col-lg-12.full-width-info-box {
+    width: 100%; /* Ensure each box takes full available width */
+    max-width: 500px; /* Optional: Constrain max width for better appearance on very wide screens */
+    flex-shrink: 0;
+}
+
+
+/* --- Footer Styles --- */
+footer {
+    background-color: #2c3e50;
+    color: white;
+    text-align: center;
+    padding: 25px 0;
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.9em;
+}
+
+/* --- Form Specific Styles (Login/Register) --- */
+.form-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 150px); /* Adjust based on header/footer height */
+    background-color: #f4f7f6;
+    padding: 40px 20px;
+}
+
+.auth-form {
+    background-color: #fff;
+    padding: 30px 40px;
+    border-radius: 10px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 450px;
+    text-align: center;
+    border: 1px solid #e0e0e0;
+}
+
+.auth-form h2 {
+    margin-bottom: 30px;
+    color: #2c3e50;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    font-size: 2em;
+}
+
+.auth-form label {
+    display: block;
+    text-align: left;
+    margin-bottom: 10px;
+    color: #444;
+    font-family: 'Roboto', sans-serif;
+    font-weight: 500;
+    font-size: 0.95em;
+}
+
+.auth-form input[type="email"],
+.auth-form input[type="password"] {
+    width: calc(100% - 24px); /* Account for padding */
+    padding: 14px 12px;
+    margin-bottom: 25px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 1em;
+    font-family: 'Roboto', sans-serif;
+    box-sizing: border-box; /* Include padding in width */
+}
+
+.auth-form input[type="email"]:focus,
+.auth-form input[type="password"]:focus {
+    border-color: #007bff;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+.auth-form button {
+    background-color: #007bff;
+    color: white;
+    padding: 15px 25px;
+    border: none;
+    border-radius: 6px;
+    font-size: 1.1em;
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    width: 100%;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.auth-form button:hover {
+    background-color: #0056b3;
+    transform: translateY(-2px);
+}
+
+.auth-form p {
+    margin-top: 25px;
+    font-family: 'Roboto', sans-serif;
+    color: #666;
+    font-size: 0.9em;
+}
+
+.auth-form p a {
+    color: #007bff;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.auth-form p a:hover {
+    text-decoration: underline;
+    color: #0056b3;
+}
+
+/* Flash Messages */
+.flashes {
+    list-style-type: none;
+    padding: 0;
+    margin-bottom: 20px;
+    text-align: center; /* Center flashes on dashboard */
+}
+
+.flashes li {
+    padding: 12px 15px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    text-align: left;
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.9em;
+    max-width: 600px; /* Limit width */
+    margin-left: auto; /* Center */
+    margin-right: auto; /* Center */
+    opacity: 1; /* Default state */
+    transition: opacity 0.5s ease-out; /* Smooth fade-out */
+}
+
+.flashes li.fade-out {
+    opacity: 0;
+    height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    overflow: hidden;
+}
+
+.flash-success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.flash-error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.flash-info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+.flash-warning {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
+
+
+/* --- Dashboard Specific Styles --- */
+.dashboard-main {
+    padding: 40px 20px;
+    background-color: #f8fafd;
+    min-height: calc(100vh - 150px);
+}
+
+/* Common card styling for sections */
+.patient-details-section,
+.slide-upload-section,
+.biopsy-camera-section,
+.current-patient-info,
+.biopsy-region-selection-section,
+.final-review-section { /* Added new section here */
+    background-color: #ffffff;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    max-width: 700px; /* Set a max-width for the form */
+    margin: 40px auto; /* Center the form and add vertical margin */
+}
+
+/* Styles for the "Current Patient Info" section */
+.current-patient-info {
+    text-align: center;
+}
+
+.current-patient-info p {
+    font-size: 1.1em;
+    color: #555;
+    margin-bottom: 25px;
+}
+
+/* Form group styling (for patient details and upload) */
+.patient-details-form .form-group,
+.upload-form .form-group {
+    margin-bottom: 20px; /* Spacing between form fields */
+}
+
+.patient-details-form label,
+.upload-form label {
+    display: block; /* Make label take full width */
+    font-family: 'Roboto', sans-serif;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 8px; /* Spacing between label and input */
+    font-size: 1em;
+}
+
+.patient-details-form input[type="text"],
+.patient-details-form input[type="number"],
+.patient-details-form input[type="date"],
+.patient-details-form select,
+.upload-form input[type="file"] {
+    width: calc(100% - 24px); /* Full width minus padding */
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 1em;
+    font-family: 'Roboto', sans-serif;
+    box-sizing: border-box; /* Include padding in width */
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.patient-details-form input[type="text"]:focus,
+.patient-details-form input[type="number"]:focus,
+.patient-details-form input[type="date"]:focus,
+.patient-details-form select:focus,
+.upload-form input[type="file"]:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+/* Style for the file input button */
+.upload-form input[type="file"]::-webkit-file-upload-button {
+    background-color: #007bff;
+    color: white;
+    padding: 8px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: 'Roboto', sans-serif;
+    transition: background-color 0.3s ease;
+}
+
+.upload-form input[type="file"]::-webkit-file-upload-button:hover {
+    background-color: #0056b3;
+}
+
+/* Primary button styling (for patient details and upload forms) */
+.patient-details-form .btn-primary,
+.upload-form .btn-primary {
+    background-color: #007bff;
+    color: white;
+    padding: 12px 25px;
+    border: none;
+    border-radius: 5px;
+    font-size: 1.1em;
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    width: auto; /* Allow button to size naturally */
+    min-width: 180px; /* Ensure a decent minimum width */
+    display: block; /* Make it a block element to take full width of form, or inline-block to center */
+    margin: 30px auto 0 auto; /* Center the button */
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+}
+
+.patient-details-form .btn-primary:hover,
+.upload-form .btn-primary:hover {
+    background-color: #0056b3;
+    transform: translateY(-2px);
+}
+
+/* Analysis Results Section (for both traditional uploads and stitched images) */
+.analysis-results {
+    margin-top: 50px;
+    padding: 30px;
+    background-color: #f0f8ff; /* Light blue background for results */
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    text-align: center;
+    max-width: 700px; /* Match width of other sections */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.analysis-results h4 {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    color: #007bff;
+    margin-bottom: 15px;
+    font-size: 1.6em;
+}
+
+.analysis-results p {
+    font-family: 'Roboto', sans-serif;
+    color: #555;
+    margin-bottom: 20px;
+    font-size: 1em;
+}
+
+.processed-slide-image {
+    max-width: 100%;
+    height: auto;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.analysis-results h5 {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-top: 25px;
+    margin-bottom: 10px;
+    font-size: 1.2em;
+}
+
+.analysis-results pre {
+    background-color: #e9ecef;
+    padding: 15px;
+    border-radius: 5px;
+    overflow-x: auto;
+    font-family: 'Roboto Mono', monospace; /* Monospace for code/coordinates */
+    font-size: 0.9em;
+    color: #343a40;
+    text-align: left; /* Keep preformatted text left-aligned */
+    white-space: pre-wrap; /* Ensure text wraps */
+    word-break: break-word; /* Break long words */
+}
+
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+    margin-top: 40px;
+}
+
+.dashboard-card {
+    background-color: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    padding: 25px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.dashboard-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.dashboard-card h3 {
+    font-family: 'Montserrat', sans-serif;
+    color: #2c3e50;
+    margin-bottom: 15px;
+    font-size: 1.5em;
+    border-bottom: 2px solid #eef2f6;
+    padding-bottom: 10px;
+}
+
+.dashboard-card p, .dashboard-card ul {
+    font-family: 'Roboto', sans-serif;
+    color: #555;
+    line-height: 1.6;
+    margin-bottom: 15px;
+}
+
+.dashboard-card ul {
+    list-style: none;
+    padding: 0;
+}
+
+.dashboard-card ul li {
+    padding: 8px 0;
+    border-bottom: 1px dashed #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dashboard-card ul li:last-child {
+    border-bottom: none;
+}
+
+.dashboard-card .status-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-dot.completed { background-color: #28a745; }
+.status-dot.pending { background-color: #ffc107; }
+.status-dot.processing { background-color: #007bff; }
+
+.dashboard-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.dashboard-actions .btn {
+    display: inline-flex; /* Changed to inline-flex for icon alignment */
+    align-items: center;
+    gap: 8px; /* Space between icon and text */
+    background-color: #007bff;
+    color: white;
+    padding: 12px 25px;
+    border-radius: 5px;
+    text-decoration: none;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    white-space: nowrap;
+    border: none; /* Ensure no default button border */
+}
+
+.dashboard-actions .btn:hover {
+    background-color: #0056b3;
+    transform: translateY(-2px);
+}
+
+/* New secondary button style for "Change Patient" and "Reset Biopsy Capture" */
+.btn-secondary {
+    background-color: #6c757d; /* Gray for secondary button */
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+    transform: translateY(-2px);
+}
+
+/* --- New: Styles for Camera/File Upload Toggle Buttons --- */
+.dashboard-actions .active-mode {
+    background-color: #0056b3; /* Darker blue when active */
+    border: 2px solid #007bff; /* Highlight active button */
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+/* --- New: Camera Feed and Captured Photo Preview --- */
+#cameraLiveFeed, #capturedPhotoPreview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+#cameraFeed, #capturedPhoto {
+    background-color: #000; /* Black background for video/image area */
+    border: 3px solid #007bff; /* Primary color border */
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+    max-width: 100%; /* Ensure responsiveness */
+    height: auto; /* Maintain aspect ratio */
+    display: block; /* Ensure it behaves like a block element */
+}
+
+/* Adjust button margin for camera controls */
+#cameraControls .btn {
+    margin-top: 10px;
+}
+
+/* Adjust margin for captured photo preview text */
+#capturedPhotoPreview p {
+    margin-bottom: 10px;
+    font-weight: 500;
+    color: #333;
+}
+
+/* --- NEW Camera Section Styles for Real-Time Stitching --- */
+.biopsy-camera-section {
+    text-align: center;
+}
+
+.camera-feeds-wrapper {
+    display: flex;
+    flex-direction: column; /* Changed from row/wrap to column to stack them */
+    gap: 30px;
+    justify-content: center;
+    align-items: center; /* Center items when stacked vertically */
+    margin-top: 30px;
+}
+
+.feed-container {
+    background-color: #ffffff;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    flex: 1; /* Allows containers to grow and shrink */
+    min-width: 300px; /* Minimum width before wrapping */
+    max-width: 480px; /* Max width to keep consistent with image size */
+    box-sizing: border-box; /* Include padding in width calculation */
+}
+
+.feed-container p strong {
+    color: #007bff;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    font-size: 1.2em;
+    display: block; /* Ensures it takes full width for centering */
+    margin-bottom: 15px;
+}
+
+.feed-container img {
+    border: 3px solid #007bff;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    display: block;
+    margin: 0 auto 15px auto; /* Center image and add bottom margin */
+    width: 480px; /* Fixed width for the video feed */
+    height: 360px; /* Fixed height for the video feed */
+    object-fit: cover; /* Ensures the video covers the area without distortion */
+    background-color: #eee; /* Placeholder background if camera doesn't load */
+}
+
+.feed-container .btn-primary { /* Styling for buttons within feed containers */
+    display: inline-flex; /* For icon alignment */
+    align-items: center;
+    gap: 8px; /* Space between icon and text */
+    padding: 12px 25px;
+    border-radius: 5px;
+    font-size: 1.1em;
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    border: none; /* Ensure no default button border */
+    margin-top: 10px; /* Space above button */
+    width: auto; /* Allow button to size naturally */
+}
+
+.feed-container .btn-primary:hover {
+    background-color: #0056b3;
+    transform: translateY(-2px);
+}
+
+
+/* --- NEW Canvas Styling for Region Selection --- */
+.canvas-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 20px;
+    margin-bottom: 30px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden; /* Ensure drawing stays within bounds */
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+#slideCanvas {
+    display: block; /* Remove extra space below canvas */
+    background-color: #f0f0f0; /* Light background for canvas */
+    cursor: crosshair; /* Indicate drawing mode */
+    max-width: 100%; /* Ensure responsiveness */
+    height: auto; /* Maintain aspect ratio */
+}
+
+/* --- NEW Camera Controls (Sliders) Styling --- */
+.camera-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    border: 1px solid #eee;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.control-group label {
+    font-family: 'Roboto', sans-serif;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 8px;
+    font-size: 0.95em;
+}
+
+.control-group input[type="range"] {
+    width: 80%; /* Adjust slider width */
+    -webkit-appearance: none; /* Remove default styling */
+    appearance: none;
+    height: 8px;
+    background: #ddd;
+    outline: none;
+    border-radius: 5px;
+    transition: background 0.2s ease-in-out;
+}
+
+.control-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: background-color 0.2s ease-in-out;
+}
+
+.control-group input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: background-color 0.2s ease-in-out;
+}
+
+.control-group input[type="range"]::-webkit-slider-thumb:hover,
+.control-group input[type="range"]::-moz-range-thumb:hover {
+    background: #0056b3;
+}
+
+.control-group span {
+    font-weight: 600;
+    color: #007bff;
+    margin-left: 5px;
+}
+
+/* --- NEW Phase 3: Final Review Section Styling --- */
+.final-review-section {
+    text-align: center;
+}
+
+.stitched-image-viewer {
+    margin-top: 30px;
+    margin-bottom: 30px;
+    padding: 20px;
+    background-color: #f0f8ff; /* Light blue background */
+    border-radius: 10px;
+    box-shadow: inset 0 0 10px rgba(0, 123, 255, 0.1); /* Inner shadow for depth */
+}
+
+.stitched-image-viewer p strong {
+    color: #007bff;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    font-size: 1.3em;
+    display: block;
+    margin-bottom: 15px;
+}
+
+#finalStitchedImage {
+    max-width: 100%;
+    height: auto;
+    border: 3px solid #007bff;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease-out; /* Smooth zoom transition */
+    transform-origin: center center; /* Ensure zoom from center */
+    display: block;
+    margin: 0 auto;
+}
+
+.zoom-controls {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.btn-icon {
+    background-color: #007bff;
+    color: white;
+    width: 45px;
+    height: 45px;
+    border-radius: 50%; /* Circular buttons */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.2em;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.btn-icon:hover {
+    background-color: #0056b3;
+    transform: translateY(-2px);
+}
+
+.diagnostic-report-section {
+    margin-top: 40px;
+    text-align: left;
+}
+
+.diagnostic-report-section h4 {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 20px;
+    font-size: 1.5em;
+    text-align: center;
+}
+
+#diagnosticReportText {
+    width: calc(100% - 40px); /* Full width minus padding */
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-family: 'Roboto', sans-serif;
+    font-size: 1em;
+    line-height: 1.6;
+    min-height: 200px; /* Sufficient height for report */
+    box-sizing: border-box;
+    margin-bottom: 20px;
+    resize: vertical; /* Allow vertical resizing */
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+#diagnosticReportText:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+#saveReportButton {
+    margin: 0 auto 20px auto; /* Center button and add margin */
+    display: block; /* Make it a block element to center */
+}
+
+.final-actions {
+    margin-top: 30px;
+    border-top: 1px solid #eee;
+    padding-top: 20px;
+}
+
+/* Ensure buttons in final-actions are styled correctly */
+.final-actions .btn {
+    margin-bottom: 10px; /* Add some space between buttons when they wrap */
+}
+
+
+/* --- Responsive Adjustments --- */
+@media (max-width: 1024px) { /* Adjust for smaller desktops/large tablets */
+    .camera-feeds-wrapper {
+        flex-direction: column; /* Ensure they remain stacked */
+        align-items: center;
+    }
+    .feed-container {
+        max-width: 100%; /* Allow containers to take full width when stacked */
+    }
+    .feed-container img {
+        width: 100%; /* Make images responsive within their containers */
+        height: auto; /* Maintain aspect ratio */
+    }
+}
+
+@media (max-width: 768px) {
+    .navbar .container {
+        flex-direction: column;
+        text-align: center;
+    }
+    .navbar nav ul {
+        margin-top: 15px;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 15px;
+    }
+    .site-title {
+        font-size: 1.5em;
+    }
+    .hero-content h2 {
+        font-size: 2.5em;
+    }
+    .hero-content p {
+        font-size: 1.2em;
+    }
+    .section-title {
+        font-size: 2em;
+    }
+    .about-features, .innovations-grid, .image-gallery, .dashboard-grid, .testimonials-grid {
+        grid-template-columns: 1fr; /* Stack columns on small screens */
+    }
+    .auth-form {
+        padding: 20px 25px;
+    }
+    /* The contact section will naturally stack due to flex-direction: column; on .contact .row */
+    /* No need to adjust .col-lg-12 specifically here for contact if .contact .row handles it */
+
+    /* Adjust patient details form on small screens */
+    .patient-details-section,
+    .slide-upload-section,
+    .analysis-results,
+    .biopsy-camera-section,
+    .current-patient-info,
+    .biopsy-region-selection-section,
+    .final-review-section { /* Added new section here */
+        padding: 20px;
+        margin: 20px auto; /* Reduce vertical margin on small screens */
+    }
+
+    .patient-details-form input[type="text"],
+    .patient-details-form input[type="number"],
+    .patient-details-form input[type="date"],
+    .patient-details-form select,
+    .upload-form input[type="file"] {
+        width: calc(100% - 20px); /* Adjust padding for smaller screens */
+        padding: 10px;
+    }
+
+    /* For the new camera section buttons */
+    .feed-container .btn-primary {
+        width: calc(100% - 30px); /* Adjust width for stacked buttons */
+        max-width: 300px; /* Limit max width for buttons */
+    }
+
+    .camera-controls {
+        width: 100%; /* Make camera controls full width on small screens */
+        padding: 10px;
+    }
+
+    .control-group input[type="range"] {
+        width: 90%; /* Adjust slider width for small screens */
+    }
+
+    /* Adjust final review section elements for small screens */
+    .stitched-image-viewer {
+        padding: 15px;
+    }
+
+    .zoom-controls {
+        flex-direction: column; /* Stack zoom buttons */
+        gap: 10px;
+    }
+
+    .btn-icon {
+        width: 100%; /* Make icon buttons full width when stacked */
+        border-radius: 5px; /* Make them rectangular when stacked */
+    }
+
+    #diagnosticReportText {
+        width: calc(100% - 30px); /* Adjust padding for smaller screens */
+        padding: 15px;
+    }
+
+    .final-actions .btn {
+        width: 100%; /* Make final action buttons full width */
+    }
+}
+
+@media (max-width: 480px) {
+    .site-title {
+        font-size: 1.5em;
+    }
+    .hero-section {
+        height: 300px;
+    }
+    .hero-content h2 {
+        font-size: 1.8em;
+    }
+    .hero-content p {
+        font-size: 0.9em;
+    }
+    .section-title {
+        font-size: 1.5em;
+    }
+    .about-features, .innovations-grid, .image-gallery, .testimonials-grid {
+        grid-template-columns: 1fr; /* Single column layout */
+    }
+    .btn {
+        width: 100%; /* Full width buttons */
+        margin: 5px 0;
+    }
+    .dashboard-actions {
+        flex-direction: column;
+    }
+}
