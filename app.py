@@ -1339,4 +1339,3 @@ def archive_case():
 if __name__ == '__main__':
     # db.create_all() is now handled above, outside this block, for Render compatibility.
     app.run(debug=True)
-
