@@ -49,6 +49,13 @@ os.makedirs(BIOPY_CAPTURE_FOLDER, exist_ok=True) # Ensure this folder exists
 
 db = SQLAlchemy(app)
 
+# >>>>>>>>>>>>> IMPORTANT FIX: ADDING db.create_all() HERE <<<<<<<<<<<<<
+# This ensures tables are created when the app starts, both locally and on Render
+with app.app_context():
+    db.create_all()
+    print("DEBUG: Database tables checked/created.")
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
 # --- Database Model: User ---
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -792,21 +799,6 @@ def clear_patient_session():
     return redirect(url_for('dashboard'))
 
 
-def cleanup_tile_images_for_patient(patient_id):
-    """
-    Deletes all individual tile images associated with a specific patient ID.
-    """
-    search_pattern = os.path.join(app.config['BIOPY_CAPTURE_FOLDER'], f"patient_{patient_id}_tile_*.jpg")
-    files_to_delete = glob.glob(search_pattern)
-    deleted_count = 0
-    for f in files_to_delete:
-        try:
-            os.remove(f)
-            deleted_count += 1
-        except OSError as e:
-            print(f"Error deleting file {f}: {e}")
-    print(f"Cleaned up {deleted_count} individual tile images for patient {patient_id}.")
-
 def cleanup_tile_images_for_user(user_id):
     """
     Deletes all individual tile images associated with any patient of a specific user ID.
@@ -1343,25 +1335,8 @@ def archive_case():
 
 
 # --- Run the Application ---
+# This block is for local development only. Gunicorn will import 'app' directly.
 if __name__ == '__main__':
-    with app.app_context():
-        # Print current working directory and database URI for debugging
-        print(f"Current working directory: {os.getcwd()}")
-        print(f"Database URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
-        
-        # Create all database tables defined by your models (User, Patient, and Slide).
-        # This will create the 'patient' table with 'diagnostic_report' column if it doesn't exist
-        db.create_all()
-    
-    # Release camera resources when the app is shutting down
-    @app.teardown_appcontext
-    def shutdown_camera(exception=None):
-        global camera
-        if camera and camera.isOpened():
-            camera.release()
-            print("DEBUG: Camera released on app shutdown.")
-
-    # Run the Flask app
-    # For local development, you can use app.run(debug=True)
-    # For production on Render, Gunicorn will be used, so this block won't run directly.
+    # db.create_all() is now handled above, outside this block, for Render compatibility.
     app.run(debug=True)
+
