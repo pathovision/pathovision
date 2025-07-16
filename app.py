@@ -12,7 +12,7 @@ import time
 import threading
 
 # Import db and models from the new models.py file
-from models import db, User, Patient, Slide # <--- CHANGED IMPORT
+from models import db, User, Patient, Slide 
 
 # Try importing cv2, but allow the app to run without it if system libs are missing
 try:
@@ -44,7 +44,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # --- Configuration for file uploads ---
 UPLOAD_FOLDER = 'static/uploads'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'} # <--- THIS IS DEFINED HERE
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -57,8 +57,14 @@ app.config['BIOPY_CAPTURE_FOLDER'] = BIOPY_CAPTURE_FOLDER
 os.makedirs(BIOPY_CAPTURE_FOLDER, exist_ok=True)
 
 # Bind db to the app instance
-db.init_app(app) # <--- INITIALIZE DB WITH APP
-migrate = Migrate(app, db) # INITIALIZE FLASK-MIGRATE
+db.init_app(app) 
+migrate = Migrate(app, db) 
+
+# Helper function to check allowed file extensions # <--- AND THE FUNCTION IS HERE
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 # --- Global Variables for Camera Capture and Real-Time Stitching ---
 camera = None 
@@ -143,9 +149,26 @@ def place_on_canvas(img, r, c):
 def live_video_feed():
     placeholder_text = "Live Camera Feed (Client-Side)"
     img = np.zeros((480, 640, 3), dtype="uint8")
-    cv2.putText(img, placeholder_text, (100, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-    ret, buffer = cv2.imencode(".jpg", img)
-    frame_bytes = buffer.tobytes()
+    if CV2_AVAILABLE:
+        cv2.putText(img, placeholder_text, (100, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+        ret, buffer = cv2.imencode(".jpg", img)
+        frame_bytes = buffer.tobytes()
+    else:
+        # Placeholder image data if cv2 not available
+        from io import BytesIO
+        from PIL import Image, ImageDraw, ImageFont
+        img_pil = Image.new('RGB', (640, 480), color = (73, 109, 137))
+        d = ImageDraw.Draw(img_pil)
+        # Try to use a default font if possible, otherwise skip text
+        try:
+            font = ImageFont.truetype("arial.ttf", 30) # Common font, might not be available
+        except IOError:
+            font = ImageFont.load_default()
+        d.text((100,240), "OpenCV Not Available", fill=(255,255,255), font=font)
+        byte_io = BytesIO()
+        img_pil.save(byte_io, 'jpeg')
+        frame_bytes = byte_io.getvalue()
+
     while True:
         yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
                frame_bytes + b"\r\n")
@@ -158,9 +181,24 @@ def stitched_biopsy_feed():
         if stitched_canvas is None:
             placeholder_text = "Stitched View Not Ready"
             img = np.zeros((360, 480, 3), dtype="uint8")
-            cv2.putText(img, placeholder_text, (50, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
-            ret, buffer = cv2.imencode(".jpg", img)
-            frame_bytes = buffer.tobytes()
+            if CV2_AVAILABLE:
+                cv2.putText(img, placeholder_text, (50, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+                ret, buffer = cv2.imencode(".jpg", img)
+                frame_bytes = buffer.tobytes()
+            else:
+                from io import BytesIO
+                from PIL import Image, ImageDraw, ImageFont
+                img_pil = Image.new('RGB', (480, 360), color = (100, 100, 100))
+                d = ImageDraw.Draw(img_pil)
+                try:
+                    font = ImageFont.truetype("arial.ttf", 20)
+                except IOError:
+                    font = ImageFont.load_default()
+                d.text((50,180), "OpenCV Not Available", fill=(255,255,255), font=font)
+                byte_io = BytesIO()
+                img_pil.save(byte_io, 'jpeg')
+                frame_bytes = byte_io.getvalue()
+
             yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
                    frame_bytes + b"\r\n")
             time.sleep(1)
@@ -176,11 +214,26 @@ def stitched_biopsy_feed():
             frame_bytes = buffer.tobytes()
         else:
             # Generate a solid color placeholder if cv2 not available
-            # This is a basic fallback, not a true stitched image
             placeholder_img = np.full((stitched_canvas.shape[0], stitched_canvas.shape[1], 3), 128, dtype="uint8")
-            cv2.putText(placeholder_img, "OpenCV Not Available for Stitching", (50, stitched_canvas.shape[0]//2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-            ret, buffer = cv2.imencode(".jpg", placeholder_img)
-            frame_bytes = buffer.tobytes()
+            # Add text to placeholder if PIL is available, otherwise just solid color
+            try:
+                from io import BytesIO
+                from PIL import Image, ImageDraw, ImageFont
+                img_pil = Image.fromarray(placeholder_img)
+                d = ImageDraw.Draw(img_pil)
+                try:
+                    font = ImageFont.truetype("arial.ttf", 20)
+                except IOError:
+                    font = ImageFont.load_default()
+                d.text((50, stitched_canvas.shape[0]//2), "OpenCV Not Available for Stitching", fill=(255,255,255), font=font)
+                byte_io = BytesIO()
+                img_pil.save(byte_io, 'jpeg')
+                frame_bytes = byte_io.getvalue()
+            except ImportError:
+                # Fallback to just empty bytes if PIL also not available
+                ret, buffer = cv2.imencode(".jpg", placeholder_img)
+                frame_bytes = buffer.tobytes()
+
 
         yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
                frame_bytes + b"\r\n")
@@ -224,7 +277,7 @@ def capture_biopsy_tile_internal(frame_data):
     r, c = current_cell
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
-    fname = f"patient_{patient_id}_tile_{r}_{c}_{timestamp}.jpg"
+    fname = f"patient_{patient_id}tile{r}{c}{timestamp}.jpg"
     path = os.path.join(app.config['BIOPY_CAPTURE_FOLDER'], fname)
     cv2.imwrite(path, frame)
     print(f"Captured tile {r},{c} for patient {patient_id} and saved to {path}")
@@ -572,7 +625,7 @@ def cleanup_tile_images_for_user(user_id):
         patient_ids = [p.id for p in Patient.query.filter_by(user_id=user_id).all()]
     total_deleted = 0
     for p_id in patient_ids:
-        search_pattern = os.path.join(app.config['BIOPY_CAPTURE_FOLDER'], f"patient_{p_id}_tile_*.jpg")
+        search_pattern = os.path.join(app.config['BIOPY_CAPTURE_FOLDER'], f"patient_{p_id}tile*.jpg")
         files_to_delete = glob.glob(search_pattern)
         for f in files_to_delete:
             try:
@@ -583,7 +636,7 @@ def cleanup_tile_images_for_user(user_id):
     print(f"Cleaned up {total_deleted} individual tile images for user {user_id} across all their patients.")
 
 def cleanup_tile_images_for_patient(patient_id):
-    search_pattern = os.path.join(app.config['BIOPY_CAPTURE_FOLDER'], f"patient_{patient_id}_tile_*.jpg")
+    search_pattern = os.path.join(app.config['BIOPY_CAPTURE_FOLDER'], f"patient_{patient_id}tile*.jpg")
     files_to_delete = glob.glob(search_pattern)
     total_deleted = 0
     for f in files_to_delete:
@@ -615,7 +668,7 @@ def upload_slide():
         flash('No selected file', 'error')
         return redirect(url_for('dashboard'))
 
-    if file and allowed_file(file.filename):
+    if file and allowed_file(file.filename): # <--- Usage here
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
@@ -654,6 +707,8 @@ def upload_camera_image():
     try:
         header, encoded = image_data_url.split(',', 1)
         image_bytes = base64.b64decode(encoded)
+        # No cv2.imdecode here, as it's not needed for just saving the raw image data
+        # If image manipulation was needed, it would be here.
 
         mime_type = header.split(':')[1].split(';')[0]
         if 'jpeg' in mime_type:
@@ -663,7 +718,7 @@ def upload_camera_image():
         else:
             return jsonify(status='error', message='Unsupported image format.'), 400
 
-        filename = f"camera_capture_initial_{session['current_patient_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+        filename = f"camera_capture_initial_{session['current_patient_id']}{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
         with open(filepath, 'wb') as f:
@@ -913,7 +968,7 @@ def download_stitched_biopsy():
         flash("Failed to generate high-quality stitched image for download. Please ensure enough tiles were captured and have sufficient overlap.", 'error')
         return redirect(url_for('dashboard'))
     
-    stitched_filename = f"patient_{patient_id}_seamless_biopsy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+    stitched_filename = f"patient_{patient_id}seamless_biopsy{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
     stitched_path = os.path.join(app.config['PROCESSED_FOLDER'], stitched_filename)
     
     try:
@@ -948,7 +1003,7 @@ def download_stitched_biopsy():
 
 @app.route('/save_diagnostic_report', methods=['POST'])
 def save_diagnostic_report():
-    if 'user_id' not in session or not session.get('current_patient_id'):
+    if 'user_id' not in session:
         return jsonify(status='error', message='Authentication or patient session missing.'), 403
     
     patient_id = session['current_patient_id']
@@ -970,7 +1025,7 @@ def save_diagnostic_report():
 
 @app.route('/archive_case', methods=['POST'])
 def archive_case():
-    if 'user_id' not in session or not session.get('current_patient_id'):
+    if 'user_id' not in session:
         return jsonify(status='error', message='Authentication or patient session missing.'), 403
 
     patient_id = session['current_patient_id']
