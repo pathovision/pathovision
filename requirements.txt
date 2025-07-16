@@ -3,7 +3,7 @@ Flask-SQLAlchemy
 Werkzeug
 psycopg2-binary
 Pillow
-opencv-python
+opencv-python-headless  # <--- CHANGED THIS LINE
 numpy
-Flask-Migrate  # <--- ADD THIS LINE
+Flask-Migrate
 gunicorn
