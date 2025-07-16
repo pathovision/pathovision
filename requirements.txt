@@ -1,8 +1,9 @@
-Flask==2.3.2
-Flask-SQLAlchemy==3.0.3
-Werkzeug==2.3.7
-gunicorn==21.2.0
-psycopg2-binary==2.9.9
-opencv-python==4.9.0.80
-Pillow==10.3.0
-numpy==1.26.4
+Flask
+Flask-SQLAlchemy
+Werkzeug
+psycopg2-binary
+Pillow
+opencv-python
+numpy
+Flask-Migrate  # <--- ADD THIS LINE
+gunicorn

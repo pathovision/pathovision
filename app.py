@@ -1,12 +1,13 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate # <--- ADD THIS IMPORT
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import os
 from datetime import datetime
-from PIL import Image, ImageDraw # For drawing on uploaded slides
-import base64 # For decoding base64 image data from frontend
-import glob # For listing files for cleanup
+from PIL import Image, ImageDraw
+import base64
+import glob
 import cv2
 import numpy as np
 import time
@@ -15,47 +16,43 @@ import threading
 app = Flask(__name__)
 
 # --- Configuration ---
-# IMPORTANT: Use an environment variable for SECRET_KEY in production!
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24)) 
 
-# Database configuration - Use PostgreSQL for Render, fallback to SQLite for local
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
-    # For PostgreSQL on Render
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL.replace("postgres://", "postgresql://", 1)
     print(f"DEBUG: Using PostgreSQL database: {app.config['SQLALCHEMY_DATABASE_URI']}")
 else:
-    # For local SQLite development
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
     print("DEBUG: Using SQLite database for local development.")
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# --- Configuration for general file uploads ---
-UPLOAD_FOLDER = 'static/uploads' # Directory to save uploaded images (initial slide)
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'} # Allowed image file types
+# --- Configuration for file uploads ---
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True) # Create upload directory if it doesn't exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# --- Configuration for Processed Images (Final Stitched Biopsy) ---
-PROCESSED_FOLDER = 'static/processed' # Directory to save processed images (including final stitched biopsy images)
+PROCESSED_FOLDER = 'static/processed'
 app.config['PROCESSED_FOLDER'] = PROCESSED_FOLDER
-os.makedirs(PROCESSED_FOLDER, exist_ok=True) # Ensure this folder exists
+os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 
-# --- Configuration for Biopsy Camera Captures (individual tiles) ---
-BIOPY_CAPTURE_FOLDER = 'static/biopsy_captures' # Directory to save individual camera frames
+BIOPY_CAPTURE_FOLDER = 'static/biopsy_captures'
 app.config['BIOPY_CAPTURE_FOLDER'] = BIOPY_CAPTURE_FOLDER
-os.makedirs(BIOPY_CAPTURE_FOLDER, exist_ok=True) # Ensure this folder exists
+os.makedirs(BIOPY_CAPTURE_FOLDER, exist_ok=True)
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db) # <--- INITIALIZE FLASK-MIGRATE HERE
 
-# >>>>>>>>>>>>> IMPORTANT: db.create_all() IS NOW REMOVED FROM HERE <<<<<<<<<<<<<
-# It will be run explicitly in Render's Build Command.
-# This ensures it runs once during deployment setup, not every time the app starts.
+# >>>>>>>>>>>>> IMPORTANT: db.create_all() IS NOW GONE FROM HERE <<<<<<<<<<<<<
+# It will be handled by Flask-Migrate's 'flask db upgrade' command.
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 # --- Database Model: User ---
 class User(db.Model):
+    # Explicitly set table name for PostgreSQL case sensitivity
+    __tablename__ = 'user' 
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
@@ -65,32 +62,34 @@ class User(db.Model):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
-        return check_password_hash(password, self.password_hash) # Corrected order for check_password_hash
+        return check_password_hash(password, self.password_hash)
 
     def __repr__(self):
         return f'<User {self.email}>'
 
 # --- Database Model: Patient ---
 class Patient(db.Model):
+    __tablename__ = 'patient' # Explicitly set table name
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     age = db.Column(db.Integer, nullable=False)
     sex = db.Column(db.String(10), nullable=False)
     date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    slides = db.relationship('Slide', backref='patient', lazy=True) # Used for both types of slides
-    diagnostic_report = db.Column(db.Text, nullable=True) # Stores the final diagnostic report
-    is_archived = db.Column(db.Boolean, default=False, nullable=False) # True if case is archived
+    slides = db.relationship('Slide', backref='patient', lazy=True)
+    diagnostic_report = db.Column(db.Text, nullable=True)
+    is_archived = db.Column(db.Boolean, default=False, nullable=False)
 
     def __repr__(self):
         return f'<Patient {self.name} (User: {self.user_id})>'
 
-# --- Database Model: Slide (Used for both general uploads and stitched images) ---
+# --- Database Model: Slide ---
 class Slide(db.Model):
+    __tablename__ = 'slide' # Explicitly set table name
     id = db.Column(db.Integer, primary_key=True)
-    filename = db.Column(db.String(255), nullable=False) # Original filename for uploaded, or generated for stitched
-    processed_filename = db.Column(db.String(255), nullable=True) # Filename of the processed image
-    biopsy_coords = db.Column(db.Text, nullable=True) # Stores coordinates or description
+    filename = db.Column(db.String(255), nullable=False)
+    processed_filename = db.Column(db.String(255), nullable=True)
+    biopsy_coords = db.Column(db.Text, nullable=True)
     upload_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'), nullable=False)
 
@@ -103,135 +102,89 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # --- Global Variables for Camera Capture and Real-Time Stitching ---
-# IMPORTANT: cv2.VideoCapture(0) is NO LONGER USED for live camera feed.
-# The camera functionality will now be handled client-side via JavaScript.
-# The `camera` variable will remain `None` on Render servers.
 camera = None 
 
+GRID_ROWS, GRID_COLS = 3, 3
+current_cell = [0, 0]
+cell_h, cell_w = None, None
+stitched_canvas = None
+last_update_ts = 0
 
-GRID_ROWS, GRID_COLS = 3, 3      # Biopsy grid size (e.g., 3x3)
-current_cell = [0, 0]            # [row, col] pointer, starts at top-left
-cell_h, cell_w = None, None      # Will be set after the first frame is read to determine camera resolution
-stitched_canvas = None           # Global composite image, updated in real-time (for preview only)
-last_update_ts = 0               # Used to throttle the MJPEG stream for stitched_feed
+is_capturing_continuously = False
+capture_thread = None
 
-is_capturing_continuously = False # Global flag for continuous capture
-capture_thread = None # To hold the continuous capture thread
+current_focus = 50
+current_zoom = 50
 
-# --- Simulated Camera Settings (for Step 9) ---
-current_focus = 50 # 0-100 scale
-current_zoom = 50  # 0-100 scale
-
-# --- Global variable to track captured tiles for workflow progression ---
 captured_tiles_count = 0
 total_tiles_needed = GRID_ROWS * GRID_COLS
 
 # ─── HELPERS FOR REAL-TIME STITCHING & GUIDANCE ───────────────────────────────────────────
 def set_cell_dims(h, w):
-    """
-    Calculates the dimensions of each grid cell based on frame size and grid size.
-    Initializes the global stitched_canvas with black pixels.
-    """
     global cell_h, cell_w, stitched_canvas
     cell_h, cell_w = h // GRID_ROWS, w // GRID_COLS
-    # Initialize stitched_canvas as a black image with the total dimensions of the grid
     stitched_canvas = np.zeros((cell_h * GRID_ROWS,
                                   cell_w * GRID_COLS, 3), dtype="uint8")
 
 def draw_overlay(frame):
-    """
-    Draws the 3x3 grid on the live camera feed and highlights the current cell.
-    Initializes cell dimensions and stitched_canvas on the first call.
-    Also adds a simulated focus dot.
-    """
     global cell_h, cell_w
-    h, w = frame.shape[:2] # Get current frame height and width
+    h, w = frame.shape[:2]
 
-    # Initialize cell dimensions and the stitched canvas if not already set
     if cell_h is None:
         set_cell_dims(h, w)
 
-    # Draw vertical grid lines
     for r_line in range(1, GRID_ROWS):
-        cv2.line(frame, (0, r_line * cell_h), (w, r_line * cell_h), (255, 255, 255), 1) # White lines
+        cv2.line(frame, (0, r_line * cell_h), (w, r_line * cell_h), (255, 255, 255), 1)
 
-    # Draw horizontal grid lines
     for c_line in range(1, GRID_COLS):
-        cv2.line(frame, (c_line * cell_w, 0), (c_line * cell_w, h), (255, 255, 255), 1) # White lines
+        cv2.line(frame, (c_line * cell_w, 0), (c_line * cell_w, h), (255, 255, 255), 1)
 
-    # Highlight the current focus cell with a green rectangle
     r, c = current_cell
     cv2.rectangle(frame, (c * cell_w, r * cell_h),
                   (c * cell_w + cell_w, r * cell_h + cell_h),
-                  (0, 255, 0), 2) # Green rectangle, 2px thick
+                  (0, 255, 0), 2)
 
-    # Add text guidance for the current cell
-    guidance_text = f"Capture {r + 1},{c + 1}" # Display 1-indexed coordinates
-    cv2.putText(frame, guidance_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2, cv2.LINE_AA) # Yellow text
+    guidance_text = f"Capture {r + 1},{c + 1}"
+    cv2.putText(frame, guidance_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2, cv2.LINE_AA)
 
-    # --- Simulated Focus Dot (Step 9) ---
-    # Draw a small red circle in the center of the current cell to simulate focus
     focus_center_x = c * cell_w + cell_w // 2
     focus_center_y = r * cell_h + cell_h // 2
-    cv2.circle(frame, (focus_center_x, focus_center_y), 5, (0, 0, 255), -1) # Red filled circle
+    cv2.circle(frame, (focus_center_x, focus_center_y), 5, (0, 0, 255), -1)
 
     return frame
 
-
 def place_on_canvas(img, r, c):
-    """
-    Resizes the captured image (tile) to the standard cell dimensions and
-    places it onto the global stitched_canvas at the correct grid position.
-    This is for the REAL-TIME PREVIEW only.
-    """
     global stitched_canvas
-    # Ensure image is not empty before resizing
     if img is None or img.size == 0:
         print(f"Warning: Attempted to place empty image for cell {r},{c} on real-time canvas.")
         return
     
-    # Ensure cell_w and cell_h are set
     if cell_w is None or cell_h is None:
-        # If not set, try to get dimensions from the current frame
         h, w = img.shape[:2]
         set_cell_dims(h, w)
 
-    # Resize the captured image to fit exactly into one cell
     resized = cv2.resize(img, (cell_w, cell_h))
-    # Place the resized image into the corresponding section of the stitched_canvas
     stitched_canvas[r*cell_h:(r+1)*cell_h, c*cell_w:(c+1)*cell_w] = resized
 
-
-# >>>>>>>>>>>>> LIVE FEED GENERATOR IS NO LONGER USED FOR WEBCAM <<<<<<<<<<<<<
-# The live feed will be handled by JavaScript directly in the browser.
-# This function is kept but will effectively serve a placeholder or not be called.
 @app.route('/live_video_feed')
 def live_video_feed():
-    """
-    Streams a placeholder image if camera is not available.
-    This route is now largely symbolic as actual live feed is client-side.
-    """
     placeholder_text = "Live Camera Feed (Client-Side)"
-    img = np.zeros((480, 640, 3), dtype="uint8") # Black image
+    img = np.zeros((480, 640, 3), dtype="uint8")
     cv2.putText(img, placeholder_text, (100, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
     ret, buffer = cv2.imencode(".jpg", img)
     frame_bytes = buffer.tobytes()
-    while True: # Keep yielding the placeholder
+    while True:
         yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
                frame_bytes + b"\r\n")
-        time.sleep(1) # Don't hog CPU
+        time.sleep(1)
 
 @app.route('/stitched_biopsy_feed')
 def stitched_biopsy_feed():
-    """
-    Streams the real-time stitched composite image to the web page.
-    This feed is still useful for showing the stitched result.
-    """
     global last_update_ts, stitched_canvas
     while True:
         if stitched_canvas is None:
             placeholder_text = "Stitched View Not Ready"
-            img = np.zeros((360, 480, 3), dtype="uint8") # Black image
+            img = np.zeros((360, 480, 3), dtype="uint8")
             cv2.putText(img, placeholder_text, (50, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
             ret, buffer = cv2.imencode(".jpg", img)
             frame_bytes = buffer.tobytes()
@@ -240,8 +193,7 @@ def stitched_biopsy_feed():
             time.sleep(1)
             continue
 
-        # Throttle the stream to approximately 10 FPS
-        if time.time() - last_update_ts < 0.1: # 0.1 seconds = 100ms delay
+        if time.time() - last_update_ts < 0.1:
             time.sleep(0.05)
             continue
         last_update_ts = time.time()
@@ -251,54 +203,18 @@ def stitched_biopsy_feed():
         yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
                frame_bytes + b"\r\n")
 
-# --- Continuous Capture Thread Function (now uses received frames) ---
 def continuous_capture_worker():
-    """
-    Worker function to continuously process frames received from the frontend.
-    This now relies on the frontend sending frames via an API.
-    """
     global is_capturing_continuously, captured_tiles_count, total_tiles_needed
-    # The actual frame capture is now triggered by the frontend.
-    # This thread will simply manage the state and progression,
-    # and expect images to be sent via the /capture_biopsy_tile_from_client route.
-
-    # This continuous_capture_worker is primarily for managing the "continuous" flow
-    # and flashing messages. The actual image data comes from the client.
-    # We'll rely on the client to call /capture_biopsy_tile_from_client repeatedly.
-
     print("DEBUG: Continuous capture worker started (backend will process client-sent frames).")
     while is_capturing_continuously:
-        # The logic for advancing current_cell and captured_tiles_count
-        # is now primarily handled by the /capture_biopsy_tile_from_client route
-        # when it successfully processes a frame.
-        
-        # For now, we'll just sleep to prevent busy-waiting.
-        # The real "continuous capture" is driven by the client sending frames.
         time.sleep(1) 
 
-        # Example: if you wanted to check if client stopped sending frames
-        # and automatically stop continuous capture after a timeout:
-        # if time.time() - last_client_frame_timestamp > 5:
-        #     is_capturing_continuously = False
-        #     with app.test_request_context():
-        #         flash("Continuous capture stopped due to inactivity.", 'warning')
-        #     print("DEBUG: Continuous capture stopped due to client inactivity.")
-        #     break
-
-
 def capture_biopsy_tile_internal(frame_data):
-    """
-    Internal function to process a single tile, now receiving frame_data (base64 string).
-    Decodes base64, converts to OpenCV format, saves, updates stitched canvas,
-    and advances the current_cell pointer.
-    """
     global current_cell, stitched_canvas, captured_tiles_count
 
-    # Decode base64 image data
     try:
         header, encoded = frame_data.split(',', 1)
         image_bytes = base64.b64decode(encoded)
-        # Convert bytes to numpy array, then to OpenCV image
         np_arr = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         
@@ -315,53 +231,39 @@ def capture_biopsy_tile_internal(frame_data):
         print("No patient ID in session, cannot save tile.")
         return False
 
-    # Check if we've already captured all tiles
     if captured_tiles_count >= total_tiles_needed:
         print("Attempted to capture tile beyond grid boundaries. Capture already complete.")
-        return False # Indicate no more tiles to capture
+        return False
 
     r, c = current_cell
     
-    # Generate a unique filename for the individual tile
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3] # Include milliseconds
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
     fname = f"patient_{patient_id}_tile_{r}_{c}_{timestamp}.jpg"
     path = os.path.join(app.config['BIOPY_CAPTURE_FOLDER'], fname)
     cv2.imwrite(path, frame)
     print(f"Captured tile {r},{c} for patient {patient_id} and saved to {path}")
 
-    # Store the path in the session for final stitching
     if 'current_patient_captured_tiles' not in session:
         session['current_patient_captured_tiles'] = []
-    # Ensure we don't add duplicate paths if somehow called multiple times for same cell
     if path not in session['current_patient_captured_tiles']:
         session['current_patient_captured_tiles'].append(path)
-        session.modified = True # Mark session as modified
+        session.modified = True
         print(f"Added tile path to session: {path}")
 
-    # Update the real-time stitched canvas (simple placement)
     place_on_canvas(frame, r, c)
 
-    # Advance the grid pointer for the *next* capture
     if c < GRID_COLS - 1:
         current_cell[1] += 1
-    else: # c is GRID_COLS - 1
+    else:
         current_cell[1] = 0
         current_cell[0] += 1
-    return True # Indicate success
-
+    return True
 
 def perform_advanced_stitching(patient_id):
-    """
-    Performs advanced image stitching using OpenCV for the final composite image.
-    Retrieves individual tile paths from the session.
-    Returns the stitched image (NumPy array) or None if stitching fails.
-    """
     if 'current_patient_captured_tiles' not in session:
         print("No captured tiles found in session for advanced stitching.")
         return None
 
-    # Filter tiles for the current patient (though session should already be scoped)
-    # This ensures we only stitch tiles relevant to the current patient session
     tile_paths = [
         path for path in session['current_patient_captured_tiles']
         if f"patient_{patient_id}" in os.path.basename(path)
@@ -371,8 +273,6 @@ def perform_advanced_stitching(patient_id):
         print("No tile paths available for stitching.")
         return None
 
-    # Sort tile paths to ensure correct order for stitching (important for grid layouts)
-    # This is a simple sort, more robust sorting might be needed for complex patterns
     tile_paths.sort() 
 
     images = []
@@ -387,12 +287,8 @@ def perform_advanced_stitching(patient_id):
         print("No valid images loaded for stitching.")
         return None
 
-    # Create a Stitcher object
-    # cv2.Stitcher_SCANS is often good for images captured in a grid/scan pattern
-    # cv2.Stitcher_PANORAMA is for more general panoramic stitching
-    stitcher = cv2.Stitcher_create(cv2.Stitcher_SCANS) # Or cv2.Stitcher_PANORAMA
+    stitcher = cv2.Stitcher_create(cv2.Stitcher_SCANS)
 
-    # Perform stitching
     status, stitched_image = stitcher.stitch(images)
 
     if status == cv2.Stitcher_OK:
@@ -400,7 +296,6 @@ def perform_advanced_stitching(patient_id):
         return stitched_image
     else:
         print(f"Advanced stitching failed with status: {status}")
-        # Provide more specific error messages based on status
         if status == cv2.Stitcher_ERR_NEED_MORE_IMGS:
             print("Stitching error: Need more images or insufficient overlap.")
         elif status == cv2.Stitcher_ERR_HOMOGRAPHY_EST_FAIL:
@@ -414,7 +309,7 @@ def perform_advanced_stitching(patient_id):
 
 @app.route('/')
 def home():
-    return render_template('index.html') # Assuming index.html is your landing page
+    return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login_page():
@@ -425,25 +320,25 @@ def login_page():
         email = request.form['email']
         password = request.form['password']
         
-        print(f"DEBUG: Login attempt for email: {email}") # Debug print
+        print(f"DEBUG: Login attempt for email: {email}")
         user = User.query.filter_by(email=email).first()
         
         if user:
-            print(f"DEBUG: User found: {user.email}") # Debug print
+            print(f"DEBUG: User found: {user.email}")
             if user.check_password(password):
                 session['username'] = user.email
                 session['user_id'] = user.id
-                session.modified = True # Explicitly mark session as modified
-                print(f"DEBUG: Login successful for {user.email}. Session after setting: {session}") # Debug print
+                session.modified = True
+                print(f"DEBUG: Login successful for {user.email}. Session after setting: {session}")
                 flash('Login successful!', 'success')
                 return redirect(url_for('dashboard'))
             else:
                 flash('Invalid email or password.', 'error')
-                print(f"DEBUG: Password mismatch for {user.email}") # Debug print
+                print(f"DEBUG: Password mismatch for {user.email}")
                 return render_template('login.html')
         else:
             flash('Invalid email or password.', 'error')
-            print(f"DEBUG: User not found for email: {email}") # Debug print
+            print(f"DEBUG: User not found for email: {email}")
             return render_template('login.html')
     return render_template('login.html')
 
@@ -468,25 +363,24 @@ def register_page():
         try:
             db.session.add(new_user)
             db.session.commit()
-            print(f"DEBUG: New user registered: {new_user.email}") # Debug print
+            print(f"DEBUG: New user registered: {new_user.email}")
             flash('Registration successful! Please login.', 'success')
             return redirect(url_for('login_page'))
         except Exception as e:
             db.session.rollback()
             flash(f'An error occurred during registration. Please try again. ({e})', 'error')
-            print(f"DEBUG: Error during registration: {e}") # Debug print
+            print(f"DEBUG: Error during registration: {e}")
             return render_template('register.html')
     return render_template('register.html')
 
 @app.route('/dashboard')
 def dashboard():
-    print(f"DEBUG: Dashboard route accessed. Current session: {session}") # Debug print at start of dashboard route
+    print(f"DEBUG: Dashboard route accessed. Current session: {session}")
     if 'username' not in session:
         flash('Please login to access the dashboard.', 'error')
         print("DEBUG: User not in session. Redirecting to login page.")
         return redirect(url_for('login_page'))
 
-    # Clear any old processed image/coords from session, as they are no longer displayed on dashboard
     session.pop('processed_image_url', None)
     session.pop('biopsy_coordinates', None)
 
@@ -495,15 +389,15 @@ def dashboard():
     current_patient = None
     if current_patient_id:
         current_patient = Patient.query.get(current_patient_id)
-        if not current_patient: # Patient not found, clear session to restart workflow
+        if not current_patient:
             session.pop('current_patient_id', None)
             session.pop('current_patient_name', None)
             session.pop('slide_uploaded_for_current_patient_flag', None)
             session.pop('biopsy_region_selected_flag', None)
             session.pop('uploaded_slide_url', None)
-            session.pop('current_patient_captured_tiles', None) # Clear captured tiles
+            session.pop('current_patient_captured_tiles', None)
             session.modified = True
-            current_patient_name = 'N/A' # Reset for template
+            current_patient_name = 'N/A'
             patient_active = False
         else:
             current_patient_name = current_patient.name
@@ -515,27 +409,22 @@ def dashboard():
     slide_uploaded_for_current_patient = session.get('slide_uploaded_for_current_patient_flag', False)
     biopsy_region_selected = session.get('biopsy_region_selected_flag', False)
     uploaded_slide_url = session.get('uploaded_slide_url', None)
-    camera_mode_active = session.get('camera_mode_active', False) # New: Get camera mode preference
+    camera_mode_active = session.get('camera_mode_active', False)
 
-    # Determine if capture is complete for workflow progression (Phase 3)
     capture_complete = (captured_tiles_count >= total_tiles_needed)
 
-    # If capture is complete, stop continuous capture if it's still running
     global is_capturing_continuously, capture_thread
     if capture_complete and is_capturing_continuously:
         is_capturing_continuously = False
         if capture_thread and capture_thread.is_alive():
             capture_thread.join(timeout=5)
             print("DEBUG: Continuous capture thread stopped as all tiles are captured.")
-        # Flash message for completion is now handled by the continuous_capture_worker thread
 
-    # --- Generate final stitched image for Phase 4 display if capture is complete ---
     final_stitched_display_url = None
     if capture_complete and patient_active:
         print("DEBUG: Generating final stitched image for dashboard display...")
         stitched_img_np = perform_advanced_stitching(current_patient_id)
         if stitched_img_np is not None:
-            # Save the stitched image temporarily for display
             display_filename = f"final_stitched_display_{current_patient_id}.jpg"
             display_path = os.path.join(app.config['PROCESSED_FOLDER'], display_filename)
             cv2.imwrite(display_path, stitched_img_np)
@@ -557,10 +446,10 @@ def dashboard():
                            is_capturing_continuously=is_capturing_continuously,
                            current_focus=current_focus,
                            current_zoom=current_zoom,
-                           capture_complete=capture_complete, # New flag for workflow progression
-                           current_patient=current_patient, # Pass the patient object for report/archive
-                           camera_mode_active=camera_mode_active, # New: Pass camera mode preference
-                           final_stitched_display_url=final_stitched_display_url # New: URL for final stitched image
+                           capture_complete=capture_complete,
+                           current_patient=current_patient,
+                           camera_mode_active=camera_mode_active,
+                           final_stitched_display_url=final_stitched_display_url
                            )
 
 @app.route('/logout')
@@ -574,17 +463,15 @@ def logout():
     session.pop('uploaded_slide_url', None)
     session.pop('processed_image_url', None)
     session.pop('biopsy_coordinates', None)
-    session.pop('camera_mode_active', None) # New: Clear camera mode preference
-    session.modified = True # Mark session as modified
+    session.pop('camera_mode_active', None)
+    session.modified = True
     
-    # Clean up individual tile images for the logged-out user (if any are left)
     user_id = session.get('user_id')
     if user_id:
-        cleanup_tile_images_for_user(user_id) # Call cleanup for all patient tiles of this user
-    session.pop('current_patient_captured_tiles', None) # Clear captured tiles from session
+        cleanup_tile_images_for_user(user_id)
+    session.pop('current_patient_captured_tiles', None)
     session.modified = True
 
-    # Stop continuous capture if active on logout
     global is_capturing_continuously, capture_thread, current_cell, stitched_canvas, captured_tiles_count
     if is_capturing_continuously:
         is_capturing_continuously = False
@@ -592,10 +479,9 @@ def logout():
             capture_thread.join(timeout=5)
             print("DEBUG: Continuous capture thread stopped on logout.")
 
-    # Reset global camera state on logout
     current_cell = [0, 0]
     stitched_canvas = None
-    captured_tiles_count = 0 # Reset captured tiles count
+    captured_tiles_count = 0
     flash('You have been logged out.', 'success')
     print("DEBUG: User logged out. Session cleared.")
     return redirect(url_for('home'))
@@ -626,14 +512,13 @@ def save_patient_details():
 
             session['current_patient_id'] = new_patient.id
             session['current_patient_name'] = new_patient.name
-            session['slide_uploaded_for_current_patient_flag'] = False # Force slide upload next
-            session['biopsy_region_selected_flag'] = False # Force region selection next
-            session.pop('uploaded_slide_url', None) # Clear previous slide URL
-            session['camera_mode_active'] = False # Default to file upload mode for new patient
-            session['current_patient_captured_tiles'] = [] # Initialize list for captured tile paths
-            session.modified = True # Explicitly mark session as modified
+            session['slide_uploaded_for_current_patient_flag'] = False
+            session['biopsy_region_selected_flag'] = False
+            session.pop('uploaded_slide_url', None)
+            session['camera_mode_active'] = False
+            session['current_patient_captured_tiles'] = []
+            session.modified = True
 
-            # Reset capture state for new patient
             global current_cell, stitched_canvas, captured_tiles_count
             current_cell = [0, 0]
             stitched_canvas = None
@@ -653,27 +538,21 @@ def save_patient_details():
 
 @app.route('/clear_patient_session')
 def clear_patient_session():
-    """
-    Clears the current patient and slide/region session, forcing the dashboard to show
-    the patient details input form again. Also cleans up captured tile images.
-    """
-    patient_id_to_clear = session.get('current_patient_id') # Get ID before popping
+    patient_id_to_clear = session.get('current_patient_id')
     
     session.pop('current_patient_id', None)
     session.pop('current_patient_name', None)
     session.pop('slide_uploaded_for_current_patient_flag', None)
     session.pop('biopsy_region_selected_flag', None)
     session.pop('uploaded_slide_url', None)
-    session.pop('camera_mode_active', None) # New: Clear camera mode preference
+    session.pop('camera_mode_active', None)
     session.modified = True
     
-    # Clean up individual tile images for the cleared patient
     if patient_id_to_clear:
         cleanup_tile_images_for_patient(patient_id_to_clear)
-    session.pop('current_patient_captured_tiles', None) # Clear captured tiles from session
-    session.modified = True # Explicitly mark session as modified
+    session.pop('current_patient_captured_tiles', None)
+    session.modified = True
 
-    # Stop continuous capture if active when clearing patient session
     global is_capturing_continuously, capture_thread, current_cell, stitched_canvas, captured_tiles_count
     if is_capturing_continuously:
         is_capturing_continuously = False
@@ -681,31 +560,18 @@ def clear_patient_session():
             capture_thread.join(timeout=5)
             print("DEBUG: Continuous capture thread stopped on clear patient session.")
 
-    # Reset global camera state
     current_cell = [0, 0]
     stitched_canvas = None
-    captured_tiles_count = 0 # Reset captured tiles count
+    captured_tiles_count = 0
 
-    # Re-initialize stitched_canvas with black pixels based on typical camera resolution
-    # This part is still needed for the stitched_canvas even if camera is client-side
-    # as we need initial dimensions for the stitched_canvas.
-    # We'll use a default size if no camera frame is received yet.
     if stitched_canvas is None:
-        set_cell_dims(480, 640) # Default to a common webcam resolution for initial canvas
+        set_cell_dims(480, 640)
         print("DEBUG: Stitched canvas re-initialized with default dimensions during reset.")
-
 
     print(f"DEBUG: Patient session cleared. Session: {session}")
     return redirect(url_for('dashboard'))
 
-
 def cleanup_tile_images_for_user(user_id):
-    """
-    Deletes all individual tile images associated with any patient of a specific user ID.
-    This is a broader cleanup, useful on logout.
-    """
-    # First, get all patient IDs for this user
-    # Need app context for database query
     with app.app_context():
         patient_ids = [p.id for p in Patient.query.filter_by(user_id=user_id).all()]
     total_deleted = 0
@@ -720,14 +586,21 @@ def cleanup_tile_images_for_user(user_id):
                 print(f"Error deleting file {f} for user {user_id}: {e}")
     print(f"Cleaned up {total_deleted} individual tile images for user {user_id} across all their patients.")
 
+def cleanup_tile_images_for_patient(patient_id):
+    search_pattern = os.path.join(app.config['BIOPY_CAPTURE_FOLDER'], f"patient_{patient_id}_tile_*.jpg")
+    files_to_delete = glob.glob(search_pattern)
+    total_deleted = 0
+    for f in files_to_delete:
+        try:
+            os.remove(f)
+            total_deleted += 1
+        except OSError as e:
+            print(f"Error deleting file {f} for patient {patient_id}: {e}")
+    print(f"Cleaned up {total_deleted} individual tile images for patient {patient_id}.")
 
-# --- ROUTE: Handle Traditional Slide Upload and Analysis ---
+
 @app.route('/upload_slide', methods=['POST'])
 def upload_slide():
-    """
-    Handles traditional slide image uploads. After upload, redirects to dashboard
-    to allow user to select region on the uploaded image.
-    """
     if 'user_id' not in session:
         flash('Please log in to upload slides.', 'error')
         return redirect(url_for('login_page'))
@@ -753,10 +626,10 @@ def upload_slide():
 
         session['uploaded_slide_url'] = url_for('static', filename=f'uploads/{filename}')
         session['slide_uploaded_for_current_patient_flag'] = True
-        session['biopsy_region_selected_flag'] = False # Reset, forcing region selection next
-        session['camera_mode_active'] = False # Ensure we're in file upload mode if this was used
-        session['current_patient_captured_tiles'] = [] # Initialize list for captured tile paths
-        session.modified = True # Explicitly mark session as modified
+        session['biopsy_region_selected_flag'] = False
+        session['camera_mode_active'] = False
+        session['current_patient_captured_tiles'] = []
+        session.modified = True
 
         flash('Slide uploaded successfully! Now, please select the region of interest on the slide.', 'success')
         print(f"DEBUG: Slide uploaded. Session: {session}")
@@ -768,11 +641,6 @@ def upload_slide():
 
 @app.route('/upload_camera_image', methods=['POST'])
 def upload_camera_image():
-    """
-    Handles image data sent from the frontend camera capture.
-    Decodes base64, saves the image, and updates session flags.
-    This is for the initial slide upload, not continuous biopsy capture tiles.
-    """
     if 'user_id' not in session:
         return jsonify(status='error', message='Authentication missing.'), 403
     if not session.get('current_patient_id'):
@@ -785,11 +653,9 @@ def upload_camera_image():
         return jsonify(status='error', message='No image data provided.'), 400
 
     try:
-        # Extract base64 part (e.g., "data:image/jpeg;base64,..." -> "...")
         header, encoded = image_data_url.split(',', 1)
         image_bytes = base64.b64decode(encoded)
 
-        # Determine file extension from header
         mime_type = header.split(':')[1].split(';')[0]
         if 'jpeg' in mime_type:
             ext = 'jpg'
@@ -806,10 +672,10 @@ def upload_camera_image():
 
         session['uploaded_slide_url'] = url_for('static', filename=f'uploads/{filename}')
         session['slide_uploaded_for_current_patient_flag'] = True
-        session['biopsy_region_selected_flag'] = False # Reset, forcing region selection next
-        session['camera_mode_active'] = True # Ensure we stay in camera mode if this was used
-        session['current_patient_captured_tiles'] = [] # Initialize list for captured tile paths
-        session.modified = True # Explicitly mark session as modified
+        session['biopsy_region_selected_flag'] = False
+        session['camera_mode_active'] = True
+        session['current_patient_captured_tiles'] = []
+        session.modified = True
 
         print(f"DEBUG: Camera initial slide image uploaded. Session: {session}")
         return jsonify(status='success', message='Camera initial slide image uploaded successfully.')
@@ -821,28 +687,20 @@ def upload_camera_image():
 
 @app.route('/set_camera_mode_active', methods=['POST'])
 def set_camera_mode_active():
-    """
-    Sets the session variable to remember if the camera mode was active.
-    This helps the dashboard load in the correct tab.
-    """
     if 'user_id' not in session:
         return jsonify(status='error', message='Authentication missing.'), 403
     
     data = request.json
-    is_active = data.get('active', False) # Default to False if not provided
+    is_active = data.get('active', False)
 
     session['camera_mode_active'] = is_active
-    session.modified = True # Explicitly mark session as modified
+    session.modified = True
     print(f"DEBUG: Camera mode set to {is_active}. Session: {session}")
     return jsonify(status='success', camera_mode_active=is_active)
 
 
 @app.route('/confirm_biopsy_region', methods=['POST'])
 def confirm_biopsy_region():
-    """
-    Receives the selected region coordinates from the frontend and marks
-    the biopsy region as selected for the current patient/slide.
-    """
     if 'user_id' not in session:
         return ('Access Denied', 403)
     if not (session.get('current_patient_id') and
@@ -857,21 +715,15 @@ def confirm_biopsy_region():
         'height': data.get('height')
     }
     session['biopsy_region_coords'] = selected_coords
-    session['biopsy_region_selected_flag'] = True # Mark region as selected
-    session.modified = True # Explicitly mark session as modified
+    session['biopsy_region_selected_flag'] = True
+    session.modified = True
 
     flash('Biopsy region selected successfully! You can now proceed with live biopsy capture.', 'success')
     print(f"DEBUG: Biopsy region confirmed. Session: {session}")
-    return ('', 204) # 204 No Content, indicating success
+    return ('', 204)
 
-
-# --- NEW ROUTE: Receive Individual Biopsy Tiles from Client ---
 @app.route("/capture_biopsy_tile_from_client", methods=["POST"])
 def capture_biopsy_tile_from_client():
-    """
-    Receives a single base64-encoded image frame from the client-side camera.
-    Processes it as a biopsy tile.
-    """
     if 'user_id' not in session:
         return jsonify(status='error', message='Authentication missing.'), 403
     if not (session.get('current_patient_id') and
@@ -881,7 +733,6 @@ def capture_biopsy_tile_from_client():
 
     global captured_tiles_count, total_tiles_needed
     if captured_tiles_count >= total_tiles_needed:
-        # Already captured all tiles, client should have stopped sending
         return jsonify(status='capture_complete', message='All tiles already captured.'), 200
 
     data = request.json
@@ -890,17 +741,16 @@ def capture_biopsy_tile_from_client():
     if not image_data_url:
         return jsonify(status='error', message='No image data provided.'), 400
 
-    if capture_biopsy_tile_internal(image_data_url): # Pass the base64 data to internal function
+    if capture_biopsy_tile_internal(image_data_url):
         captured_tiles_count += 1
         if captured_tiles_count >= total_tiles_needed:
-            # All tiles captured, stop continuous capture if it's running
             global is_capturing_continuously, capture_thread
             if is_capturing_continuously:
                 is_capturing_continuously = False
                 if capture_thread and capture_thread.is_alive():
                     capture_thread.join(timeout=5)
                     print("DEBUG: Continuous capture thread stopped as all tiles are captured.")
-            with app.test_request_context(): # Use test context for flashing outside a request
+            with app.test_request_context():
                 flash("All biopsy sections captured! You can now review and generate the report.", 'success')
             print(f"DEBUG: Tile captured. Current captured count: {captured_tiles_count}. Session: {session}")
             return jsonify(status='success', message='Tile captured. All tiles complete.')
@@ -913,10 +763,6 @@ def capture_biopsy_tile_from_client():
 
 @app.route('/start_continuous_capture', methods=['POST'])
 def start_continuous_capture():
-    """
-    Starts the continuous capture thread (now primarily for managing state/messages).
-    The actual image capture is driven by the client.
-    """
     if 'user_id' not in session:
         return jsonify(status='error', message='Authentication missing.'), 403
     if not (session.get('current_patient_id') and
@@ -932,10 +778,8 @@ def start_continuous_capture():
 
     if not is_capturing_continuously:
         is_capturing_continuously = True
-        # The continuous_capture_worker now primarily manages the state and flashes messages.
-        # It doesn't read from a camera.
         capture_thread = threading.Thread(target=continuous_capture_worker)
-        capture_thread.daemon = True # Allow main program to exit even if thread is running
+        capture_thread.daemon = True
         capture_thread.start()
         flash('Continuous video capture started. Please ensure your browser camera is active.', 'success')
         print("DEBUG: Continuous capture started (client-side expected).")
@@ -945,16 +789,13 @@ def start_continuous_capture():
 
 @app.route('/stop_continuous_capture', methods=['POST'])
 def stop_continuous_capture():
-    """
-    Stops the continuous capture thread.
-    """
     if 'user_id' not in session:
         return jsonify(status='error', message='Authentication missing.'), 403
     global is_capturing_continuously, capture_thread
     if is_capturing_continuously:
         is_capturing_continuously = False
         if capture_thread and capture_thread.is_alive():
-            capture_thread.join(timeout=5) # Wait for thread to finish
+            capture_thread.join(timeout=5)
             print("DEBUG: Continuous capture thread stopped via API.")
         flash('Continuous video capture stopped.', 'info')
         return jsonify(status='stopped')
@@ -963,22 +804,17 @@ def stop_continuous_capture():
 
 @app.route('/get_camera_guidance')
 def get_camera_guidance():
-    """
-    Provides real-time directional guidance based on the current cell.
-    Also provides current focus/zoom and capture completion status.
-    """
     r, c = current_cell
     next_row = r
     next_col = c + 1
 
     guidance_message = ""
-    # Check if all tiles are captured
     if captured_tiles_count >= total_tiles_needed:
         guidance_message = "All sections captured! Proceed to final review and report generation."
-    elif next_col >= GRID_COLS: # End of current row
+    elif next_col >= GRID_COLS:
         next_row += 1
         next_col = 0
-        if next_row >= GRID_ROWS: # This case should ideally be caught by captured_tiles_count >= total_tiles_needed
+        if next_row >= GRID_ROWS:
             guidance_message = "All sections captured! Proceed to final review and report generation."
         else:
             guidance_message = f"Move to next row: Row {next_row + 1}, Column {next_col + 1} (move camera down and reset left)."
@@ -991,16 +827,13 @@ def get_camera_guidance():
         'next_cell': {'row': next_row, 'col': next_col},
         'focus_level': current_focus,
         'zoom_level': current_zoom,
-        'capture_complete': (captured_tiles_count >= total_tiles_needed), # Send capture status
-        'captured_tiles_count': captured_tiles_count, # Send current count
-        'total_tiles_needed': total_tiles_needed # Send total needed
+        'capture_complete': (captured_tiles_count >= total_tiles_needed),
+        'captured_tiles_count': captured_tiles_count,
+        'total_tiles_needed': total_tiles_needed
     })
 
 @app.route('/set_camera_focus', methods=['POST'])
 def set_camera_focus():
-    """
-    Sets the simulated camera focus level.
-    """
     if 'user_id' not in session:
         return jsonify(status='error', message='Authentication missing.'), 403
     data = request.json
@@ -1014,9 +847,6 @@ def set_camera_focus():
 
 @app.route('/set_camera_zoom', methods=['POST'])
 def set_camera_zoom():
-    """
-    Sets the simulated camera zoom level.
-    """
     if 'user_id' not in session:
         return jsonify(status='error', message='Authentication missing.'), 403
     data = request.json
@@ -1031,10 +861,6 @@ def set_camera_zoom():
 
 @app.route("/reset_biopsy_capture_session")
 def reset_biopsy_capture_session():
-    """
-    Resets the camera capture state (current_cell, stitched_canvas, captured_tiles_count)
-    for the current patient. Also cleans up captured tile images.
-    """
     if 'user_id' not in session:
         flash('Please log in to reset.', 'error')
         return redirect(url_for('login_page'))
@@ -1044,7 +870,6 @@ def reset_biopsy_capture_session():
         flash('Cannot reset biopsy capture. Please ensure a patient is selected, a slide is uploaded, and a region is selected.', 'error')
         return redirect(url_for('dashboard'))
 
-    # Stop continuous capture if active
     global is_capturing_continuously, capture_thread, current_cell, stitched_canvas, captured_tiles_count
     if is_capturing_continuously:
         is_capturing_continuously = False
@@ -1052,25 +877,19 @@ def reset_biopsy_capture_session():
             capture_thread.join(timeout=5)
             print("DEBUG: Continuous capture thread stopped on reset.")
 
-    # Clean up individual tile images for the current patient
     patient_id = session.get('current_patient_id')
     if patient_id:
         cleanup_tile_images_for_patient(patient_id)
-    session.pop('current_patient_captured_tiles', None) # Clear captured tiles from session
-    session.modified = True # Explicitly mark session as modified
+    session.pop('current_patient_captured_tiles', None)
+    session.modified = True
 
-    current_cell = [0, 0] # Reset grid pointer
-    stitched_canvas = None # Clear real-time stitched canvas
-    captured_tiles_count = 0 # Reset captured tiles count
+    current_cell = [0, 0]
+    stitched_canvas = None
+    captured_tiles_count = 0
 
-    # Re-initialize stitched_canvas with black pixels based on typical camera resolution
-    # This part is still needed for the stitched_canvas even if camera is client-side
-    # as we need initial dimensions for the stitched_canvas.
-    # We'll use a default size if no camera frame is received yet.
     if stitched_canvas is None:
-        set_cell_dims(480, 640) # Default to a common webcam resolution for initial canvas
+        set_cell_dims(480, 640)
         print("DEBUG: Stitched canvas re-initialized with default dimensions during reset.")
-
 
     print(f"DEBUG: Biopsy capture session reset. Session: {session}")
     return redirect(url_for('dashboard'))
@@ -1078,11 +897,6 @@ def reset_biopsy_capture_session():
 
 @app.route("/download_stitched_biopsy")
 def download_stitched_biopsy():
-    """
-    Allows downloading the current stitched composite image.
-    Also saves the stitched image as a Slide entry in the database.
-    Now uses advanced stitching for the final image.
-    """
     if 'user_id' not in session:
         flash('Access Denied. Please log in.', 'error')
         return redirect(url_for('login_page'))
@@ -1094,30 +908,26 @@ def download_stitched_biopsy():
 
     patient_id = session['current_patient_id']
     
-    # Perform advanced stitching for the download
     stitched_img_np = perform_advanced_stitching(patient_id)
 
     if stitched_img_np is None:
         flash("Failed to generate high-quality stitched image for download. Please ensure enough tiles were captured and have sufficient overlap.", 'error')
         return redirect(url_for('dashboard'))
     
-    # Save the stitched image to a temporary file for download
     stitched_filename = f"patient_{patient_id}_seamless_biopsy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-    stitched_path = os.path.join(app.config['PROCESSED_FOLDER'], stitched_filename) # Save to processed folder
+    stitched_path = os.path.join(app.config['PROCESSED_FOLDER'], stitched_filename)
     
     try:
         cv2.imwrite(stitched_path, stitched_img_np)
         print(f"DEBUG: Seamless stitched image saved to: {stitched_path}")
 
-        # Retrieve the selected biopsy region coordinates from the session
         selected_region = session.get('biopsy_region_coords', {})
         biopsy_coords_str = f"Stitched from {GRID_ROWS}x{GRID_COLS} grid captures. Selected region on original slide: {selected_region}"
 
-        # Save the stitched image as a new "slide" entry in the database
         new_slide = Slide(
-            filename=stitched_filename, # Use the stitched filename
-            processed_filename=stitched_filename, # It's already processed
-            biopsy_coords=biopsy_coords_str, # Store the selected region info
+            filename=stitched_filename,
+            processed_filename=stitched_filename,
+            biopsy_coords=biopsy_coords_str,
             patient_id=patient_id
         )
         db.session.add(new_slide)
@@ -1132,12 +942,8 @@ def download_stitched_biopsy():
         return redirect(url_for('dashboard'))
 
 
-# --- NEW ROUTES FOR PHASE 3: REPORTING AND ARCHIVING ---
 @app.route('/save_diagnostic_report', methods=['POST'])
 def save_diagnostic_report():
-    """
-    Saves the diagnostic report text for the current patient. (Step 12)
-    """
     if 'user_id' not in session or not session.get('current_patient_id'):
         return jsonify(status='error', message='Authentication or patient session missing.'), 403
     
@@ -1160,10 +966,6 @@ def save_diagnostic_report():
 
 @app.route('/archive_case', methods=['POST'])
 def archive_case():
-    """
-    Marks the current patient's case as archived. (Step 13)
-    Also cleans up individual tile images for the archived patient.
-    """
     if 'user_id' not in session or not session.get('current_patient_id'):
         return jsonify(status='error', message='Authentication or patient session missing.'), 403
 
@@ -1173,21 +975,18 @@ def archive_case():
         patient.is_archived = True
         try:
             db.session.commit()
-            # Clear patient session after archiving to start a new case
             session.pop('current_patient_id', None)
             session.pop('current_patient_name', None)
             session.pop('slide_uploaded_for_current_patient_flag', None)
             session.pop('biopsy_region_selected_flag', None)
             session.pop('uploaded_slide_url', None)
-            session.pop('camera_mode_active', None) # New: Clear camera mode preference
+            session.pop('camera_mode_active', None)
             session.modified = True
             
-            # Clean up individual tile images for the archived patient
             cleanup_tile_images_for_patient(patient_id)
-            session.pop('current_patient_captured_tiles', None) # Clear captured tiles from session
-            session.modified = True # Explicitly mark session as modified
+            session.pop('current_patient_captured_tiles', None)
+            session.modified = True
 
-            # Also reset global camera state
             global current_cell, stitched_canvas, captured_tiles_count
             current_cell = [0, 0]
             stitched_canvas = None
@@ -1203,8 +1002,8 @@ def archive_case():
     return jsonify(status='error', message='Patient not found.'), 404
 
 
-# --- Run the Application ---
-# This block is for local development only. Gunicorn will import 'app' directly.
 if __name__ == '__main__':
-    # db.create_all() is now handled above, outside this block, for Render compatibility.
+    # For local development only:
+    # with app.app_context():
+    #     db.create_all() # This is now handled by flask db upgrade for production
     app.run(debug=True)
