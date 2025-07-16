@@ -11,8 +11,8 @@ db = SQLAlchemy()
 class User(db.Model):
     _tablename_ = 'user' # <--- THIS MUST BE DOUBLE UNDERSCORES
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
+    email = db.Column(db.String(200), unique=True, nullable=False)
+    password_hash = db.Column(db.String(10000), nullable=False)
     patients = db.relationship('Patient', backref='owner', lazy=True)
 
     def set_password(self, password):
