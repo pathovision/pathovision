@@ -1,6 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify, send_file
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate # <--- ADD THIS IMPORT
+from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import os
@@ -8,10 +7,25 @@ from datetime import datetime
 from PIL import Image, ImageDraw
 import base64
 import glob
-import cv2
 import numpy as np
 import time
 import threading
+
+# Import db and models from the new models.py file
+from models import db, User, Patient, Slide # <--- CHANGED IMPORT
+
+# Try importing cv2, but allow the app to run without it if system libs are missing
+try:
+    import cv2
+    print("DEBUG: OpenCV (cv2) imported successfully.")
+    CV2_AVAILABLE = True
+except ImportError as e:
+    print(f"WARNING: OpenCV (cv2) could not be imported: {e}. Camera and advanced image processing features will be disabled.")
+    CV2_AVAILABLE = False
+except Exception as e:
+    print(f"WARNING: An unexpected error occurred during OpenCV import: {e}. Camera and advanced image processing features will be disabled.")
+    CV2_AVAILABLE = False
+
 
 app = Flask(__name__)
 
@@ -42,64 +56,9 @@ BIOPY_CAPTURE_FOLDER = 'static/biopsy_captures'
 app.config['BIOPY_CAPTURE_FOLDER'] = BIOPY_CAPTURE_FOLDER
 os.makedirs(BIOPY_CAPTURE_FOLDER, exist_ok=True)
 
-db = SQLAlchemy(app)
-migrate = Migrate(app, db) # <--- INITIALIZE FLASK-MIGRATE HERE
-
-# >>>>>>>>>>>>> IMPORTANT: db.create_all() IS NOW GONE FROM HERE <<<<<<<<<<<<<
-# It will be handled by Flask-Migrate's 'flask db upgrade' command.
-# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
-# --- Database Model: User ---
-class User(db.Model):
-    # Explicitly set table name for PostgreSQL case sensitivity
-    __tablename__ = 'user' 
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
-    patients = db.relationship('Patient', backref='owner', lazy=True)
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(password, self.password_hash)
-
-    def __repr__(self):
-        return f'<User {self.email}>'
-
-# --- Database Model: Patient ---
-class Patient(db.Model):
-    __tablename__ = 'patient' # Explicitly set table name
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    age = db.Column(db.Integer, nullable=False)
-    sex = db.Column(db.String(10), nullable=False)
-    date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    slides = db.relationship('Slide', backref='patient', lazy=True)
-    diagnostic_report = db.Column(db.Text, nullable=True)
-    is_archived = db.Column(db.Boolean, default=False, nullable=False)
-
-    def __repr__(self):
-        return f'<Patient {self.name} (User: {self.user_id})>'
-
-# --- Database Model: Slide ---
-class Slide(db.Model):
-    __tablename__ = 'slide' # Explicitly set table name
-    id = db.Column(db.Integer, primary_key=True)
-    filename = db.Column(db.String(255), nullable=False)
-    processed_filename = db.Column(db.String(255), nullable=True)
-    biopsy_coords = db.Column(db.Text, nullable=True)
-    upload_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'), nullable=False)
-
-    def __repr__(self):
-        return f'<Slide {self.filename} (Patient: {self.patient_id})>'
-
-# Helper function to check allowed file extensions
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+# Bind db to the app instance
+db.init_app(app) # <--- INITIALIZE DB WITH APP
+migrate = Migrate(app, db) # INITIALIZE FLASK-MIGRATE
 
 # --- Global Variables for Camera Capture and Real-Time Stitching ---
 camera = None 
@@ -123,8 +82,15 @@ total_tiles_needed = GRID_ROWS * GRID_COLS
 def set_cell_dims(h, w):
     global cell_h, cell_w, stitched_canvas
     cell_h, cell_w = h // GRID_ROWS, w // GRID_COLS
-    stitched_canvas = np.zeros((cell_h * GRID_ROWS,
-                                  cell_w * GRID_COLS, 3), dtype="uint8")
+    # Initialize stitched_canvas with black pixels or default if cv2 not available
+    if CV2_AVAILABLE:
+        stitched_canvas = np.zeros((cell_h * GRID_ROWS,
+                                    cell_w * GRID_COLS, 3), dtype="uint8")
+    else:
+        # Fallback for stitched_canvas if cv2 is not available
+        stitched_canvas = np.full((cell_h * GRID_ROWS,
+                                   cell_w * GRID_COLS, 3), 128, dtype="uint8") # Grey placeholder
+
 
 def draw_overlay(frame):
     global cell_h, cell_w
@@ -133,23 +99,24 @@ def draw_overlay(frame):
     if cell_h is None:
         set_cell_dims(h, w)
 
-    for r_line in range(1, GRID_ROWS):
-        cv2.line(frame, (0, r_line * cell_h), (w, r_line * cell_h), (255, 255, 255), 1)
+    if CV2_AVAILABLE:
+        for r_line in range(1, GRID_ROWS):
+            cv2.line(frame, (0, r_line * cell_h), (w, r_line * cell_h), (255, 255, 255), 1)
 
-    for c_line in range(1, GRID_COLS):
-        cv2.line(frame, (c_line * cell_w, 0), (c_line * cell_w, h), (255, 255, 255), 1)
+        for c_line in range(1, GRID_COLS):
+            cv2.line(frame, (c_line * cell_w, 0), (c_line * cell_w, h), (255, 255, 255), 1)
 
-    r, c = current_cell
-    cv2.rectangle(frame, (c * cell_w, r * cell_h),
-                  (c * cell_w + cell_w, r * cell_h + cell_h),
-                  (0, 255, 0), 2)
+        r, c = current_cell
+        cv2.rectangle(frame, (c * cell_w, r * cell_h),
+                    (c * cell_w + cell_w, r * cell_h + cell_h),
+                    (0, 255, 0), 2)
 
-    guidance_text = f"Capture {r + 1},{c + 1}"
-    cv2.putText(frame, guidance_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2, cv2.LINE_AA)
+        guidance_text = f"Capture {r + 1},{c + 1}"
+        cv2.putText(frame, guidance_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2, cv2.LINE_AA)
 
-    focus_center_x = c * cell_w + cell_w // 2
-    focus_center_y = r * cell_h + cell_h // 2
-    cv2.circle(frame, (focus_center_x, focus_center_y), 5, (0, 0, 255), -1)
+        focus_center_x = c * cell_w + cell_w // 2
+        focus_center_y = r * cell_h + cell_h // 2
+        cv2.circle(frame, (focus_center_x, focus_center_y), 5, (0, 0, 255), -1)
 
     return frame
 
@@ -163,8 +130,14 @@ def place_on_canvas(img, r, c):
         h, w = img.shape[:2]
         set_cell_dims(h, w)
 
-    resized = cv2.resize(img, (cell_w, cell_h))
-    stitched_canvas[r*cell_h:(r+1)*cell_h, c*cell_w:(c+1)*cell_w] = resized
+    if CV2_AVAILABLE:
+        resized = cv2.resize(img, (cell_w, cell_h))
+        stitched_canvas[r*cell_h:(r+1)*cell_h, c*cell_w:(c+1)*cell_w] = resized
+    else:
+        # Simple placeholder for stitched_canvas if cv2 not available
+        # This will just put a solid color block in the stitched_canvas
+        stitched_canvas[r*cell_h:(r+1)*cell_h, c*cell_w:(c+1)*cell_w] = np.full((cell_h, cell_w, 3), (r*30 % 255, c*30 % 255, 100), dtype="uint8")
+
 
 @app.route('/live_video_feed')
 def live_video_feed():
@@ -198,8 +171,17 @@ def stitched_biopsy_feed():
             continue
         last_update_ts = time.time()
 
-        ret, buffer = cv2.imencode(".jpg", stitched_canvas)
-        frame_bytes = buffer.tobytes()
+        if CV2_AVAILABLE:
+            ret, buffer = cv2.imencode(".jpg", stitched_canvas)
+            frame_bytes = buffer.tobytes()
+        else:
+            # Generate a solid color placeholder if cv2 not available
+            # This is a basic fallback, not a true stitched image
+            placeholder_img = np.full((stitched_canvas.shape[0], stitched_canvas.shape[1], 3), 128, dtype="uint8")
+            cv2.putText(placeholder_img, "OpenCV Not Available for Stitching", (50, stitched_canvas.shape[0]//2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+            ret, buffer = cv2.imencode(".jpg", placeholder_img)
+            frame_bytes = buffer.tobytes()
+
         yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
                frame_bytes + b"\r\n")
 
@@ -211,6 +193,10 @@ def continuous_capture_worker():
 
 def capture_biopsy_tile_internal(frame_data):
     global current_cell, stitched_canvas, captured_tiles_count
+
+    if not CV2_AVAILABLE:
+        print("ERROR: OpenCV not available. Cannot process image data.")
+        return False
 
     try:
         header, encoded = frame_data.split(',', 1)
@@ -260,6 +246,10 @@ def capture_biopsy_tile_internal(frame_data):
     return True
 
 def perform_advanced_stitching(patient_id):
+    if not CV2_AVAILABLE:
+        print("ERROR: OpenCV not available. Cannot perform advanced stitching.")
+        return None
+
     if 'current_patient_captured_tiles' not in session:
         print("No captured tiles found in session for advanced stitching.")
         return None
@@ -427,9 +417,13 @@ def dashboard():
         if stitched_img_np is not None:
             display_filename = f"final_stitched_display_{current_patient_id}.jpg"
             display_path = os.path.join(app.config['PROCESSED_FOLDER'], display_filename)
-            cv2.imwrite(display_path, stitched_img_np)
-            final_stitched_display_url = url_for('static', filename=f'processed/{display_filename}')
-            print(f"DEBUG: Final stitched image saved for display at: {final_stitched_display_url}")
+            if CV2_AVAILABLE: # Only save if cv2 is available
+                cv2.imwrite(display_path, stitched_img_np)
+                final_stitched_display_url = url_for('static', filename=f'processed/{display_filename}')
+                print(f"DEBUG: Final stitched image saved for display at: {final_stitched_display_url}")
+            else:
+                print("DEBUG: OpenCV not available, cannot save final stitched image for display.")
+                flash("OpenCV not available on server, cannot generate high-quality stitched image for display.", "warning")
         else:
             print("DEBUG: Failed to generate final stitched image for display.")
             flash("Could not generate high-quality stitched image for display. Please check captured tiles.", "warning")
@@ -564,9 +558,11 @@ def clear_patient_session():
     stitched_canvas = None
     captured_tiles_count = 0
 
-    if stitched_canvas is None:
-        set_cell_dims(480, 640)
-        print("DEBUG: Stitched canvas re-initialized with default dimensions during reset.")
+    # Initialize stitched_canvas with default dimensions if cv2 is not available
+    # This ensures it has a size even if no camera frames are processed yet
+    set_cell_dims(480, 640) # Default to a common webcam resolution for initial canvas
+    print("DEBUG: Stitched canvas re-initialized with default dimensions during reset.")
+
 
     print(f"DEBUG: Patient session cleared. Session: {session}")
     return redirect(url_for('dashboard'))
@@ -651,6 +647,9 @@ def upload_camera_image():
 
     if not image_data_url:
         return jsonify(status='error', message='No image data provided.'), 400
+
+    if not CV2_AVAILABLE:
+        return jsonify(status='error', message='Server-side image processing (OpenCV) not available.'), 500
 
     try:
         header, encoded = image_data_url.split(',', 1)
@@ -887,11 +886,11 @@ def reset_biopsy_capture_session():
     stitched_canvas = None
     captured_tiles_count = 0
 
-    if stitched_canvas is None:
-        set_cell_dims(480, 640)
-        print("DEBUG: Stitched canvas re-initialized with default dimensions during reset.")
+    set_cell_dims(480, 640)
+    print("DEBUG: Stitched canvas re-initialized with default dimensions during reset.")
 
-    print(f"DEBUG: Biopsy capture session reset. Session: {session}")
+
+    print(f"DEBUG: Patient session cleared. Session: {session}")
     return redirect(url_for('dashboard'))
 
 
@@ -918,8 +917,13 @@ def download_stitched_biopsy():
     stitched_path = os.path.join(app.config['PROCESSED_FOLDER'], stitched_filename)
     
     try:
-        cv2.imwrite(stitched_path, stitched_img_np)
-        print(f"DEBUG: Seamless stitched image saved to: {stitched_path}")
+        if CV2_AVAILABLE: # Only save if cv2 is available
+            cv2.imwrite(stitched_path, stitched_img_np)
+            print(f"DEBUG: Seamless stitched image saved to: {stitched_path}")
+        else:
+            print("WARNING: OpenCV not available, cannot save stitched image to disk.")
+            flash("OpenCV not available on server, cannot save high-quality stitched image to disk.", "warning")
+            return redirect(url_for('dashboard')) # Redirect if save fails due to missing cv2
 
         selected_region = session.get('biopsy_region_coords', {})
         biopsy_coords_str = f"Stitched from {GRID_ROWS}x{GRID_COLS} grid captures. Selected region on original slide: {selected_region}"
@@ -1003,7 +1007,4 @@ def archive_case():
 
 
 if __name__ == '__main__':
-    # For local development only:
-    # with app.app_context():
-    #     db.create_all() # This is now handled by flask db upgrade for production
     app.run(debug=True)
