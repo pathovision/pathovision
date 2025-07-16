@@ -9,7 +9,7 @@ db = SQLAlchemy()
 
 # --- Database Model: User ---
 class User(db.Model):
-    __tablename__ = 'user' # Explicitly set table name for PostgreSQL case sensitivity
+    _tablename_ = 'user' # <--- CORRECTED: Double underscores
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
@@ -21,12 +21,12 @@ class User(db.Model):
     def check_password(self, password):
         return check_password_hash(password, self.password_hash)
 
-    def __repr__(self):
+    def _repr_(self): # <--- CORRECTED: Double underscores
         return f'<User {self.email}>'
 
 # --- Database Model: Patient ---
 class Patient(db.Model):
-    __tablename__ = 'patient' # Explicitly set table name
+    _tablename_ = 'patient' # <--- CORRECTED: Double underscores
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     age = db.Column(db.Integer, nullable=False)
@@ -37,12 +37,12 @@ class Patient(db.Model):
     diagnostic_report = db.Column(db.Text, nullable=True)
     is_archived = db.Column(db.Boolean, default=False, nullable=False)
 
-    def __repr__(self):
+    def _repr_(self): # <--- CORRECTED: Double underscores
         return f'<Patient {self.name} (User: {self.user_id})>'
 
 # --- Database Model: Slide ---
 class Slide(db.Model):
-    __tablename__ = 'slide' # Explicitly set table name
+    _tablename_ = 'slide' # <--- CORRECTED: Double underscores
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
     processed_filename = db.Column(db.String(255), nullable=True)
@@ -50,5 +50,5 @@ class Slide(db.Model):
     upload_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'), nullable=False)
 
-    def __repr__(self):
+    def _repr_(self): # <--- CORRECTED: Double underscores
         return f'<Slide {self.filename} (Patient: {self.patient_id})>'
