@@ -1,9 +1,9 @@
 Flask
 Flask-SQLAlchemy
 Werkzeug
-psycopg2-binary
+PyMySQL # Added for MySQL
 Pillow
-opencv-python-headless  # <--- CHANGED THIS LINE
+opencv-python-headless
 numpy
 Flask-Migrate
 gunicorn
