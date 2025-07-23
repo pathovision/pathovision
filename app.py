@@ -71,7 +71,7 @@ def allowed_file(filename):
 # --- Global Variables for Camera Capture and Real-Time Stitching ---
 camera = None 
 
-GRID_ROWS, GRID_COLS = 3, 3
+GRID_ROWS, GRID_COLS = 7, 7
 current_cell = [0, 0]
 cell_h, cell_w = None, None
 stitched_canvas = None
