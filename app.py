@@ -4,14 +4,14 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 # Removed: from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from datetime import datetime
+from datetime import datetime # Keep this import
 from PIL import Image, ImageDraw
 import base64
 import glob
 import numpy as np
 import time
 import threading
-
+ 
 # Import db and models from the new models.py file
 from models import db, User, Patient, Slide 
 
@@ -494,7 +494,8 @@ def dashboard():
                             capture_complete=capture_complete,
                             current_patient=current_patient,
                             camera_mode_active=camera_mode_active,
-                            final_stitched_display_url=final_stitched_display_url
+                            final_stitched_display_url=final_stitched_display_url,
+                            datetime=datetime # <--- ADDED THIS LINE FOR TEMPLATE
                             )
 
 @app.route('/logout')
