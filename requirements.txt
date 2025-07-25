@@ -1,9 +1,7 @@
 Flask
 Flask-SQLAlchemy
 Werkzeug
-PyMySQL # Added for MySQL
 Pillow
 opencv-python-headless
 numpy
-Flask-Migrate
 gunicorn

@@ -1,10 +1,9 @@
 # app.py
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash, session, Response, jsonify, send_file
-from flask_migrate import Migrate
+# Removed: from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import os
 from datetime import datetime
 from PIL import Image, ImageDraw
 import base64
@@ -34,19 +33,15 @@ app = Flask(__name__)
 # --- Configuration ---
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24)) 
 
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if DATABASE_URL:
-    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-    print(f"DEBUG: Using PostgreSQL database: {app.config['SQLALCHEMY_DATABASE_URI']}")
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
-    print("DEBUG: Using SQLite database for local development.")
+# Set up SQLite database URI
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///pathovision.db' # Changed to pathovision.db for consistency
+print("DEBUG: Using SQLite database for local development and Render (non-persistent).")
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # --- Configuration for file uploads ---
 UPLOAD_FOLDER = 'static/uploads'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'} # <--- THIS IS DEFINED HERE
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -60,9 +55,16 @@ os.makedirs(BIOPY_CAPTURE_FOLDER, exist_ok=True)
 
 # Bind db to the app instance
 db.init_app(app) 
-migrate = Migrate(app, db) 
 
-# Helper function to check allowed file extensions # <--- AND THE FUNCTION IS HERE
+# Removed: migrate = Migrate(app, db) # Flask-Migrate is removed for this SQLite setup
+
+# --- Add this block to create tables if they don't exist (for local AND Render) ---
+# This will run when the app first starts.
+with app.app_context():
+    db.create_all()
+    print("DEBUG: Database tables created or already exist.")
+
+# Helper function to check allowed file extensions
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -116,8 +118,8 @@ def draw_overlay(frame):
 
         r, c = current_cell
         cv2.rectangle(frame, (c * cell_w, r * cell_h),
-                    (c * cell_w + cell_w, r * cell_h + cell_h),
-                    (0, 255, 0), 2)
+                      (c * cell_w + cell_w, r * cell_h + cell_h),
+                      (0, 255, 0), 2)
 
         guidance_text = f"Capture {r + 1},{c + 1}"
         cv2.putText(frame, guidance_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2, cv2.LINE_AA)
@@ -143,7 +145,6 @@ def place_on_canvas(img, r, c):
         stitched_canvas[r*cell_h:(r+1)*cell_h, c*cell_w:(c+1)*cell_w] = resized
     else:
         # Simple placeholder for stitched_canvas if cv2 not available
-        # This will just put a solid color block in the stitched_canvas
         stitched_canvas[r*cell_h:(r+1)*cell_h, c*cell_w:(c+1)*cell_w] = np.full((cell_h, cell_w, 3), (r*30 % 255, c*30 % 255, 100), dtype="uint8")
 
 
@@ -156,14 +157,12 @@ def live_video_feed():
         ret, buffer = cv2.imencode(".jpg", img)
         frame_bytes = buffer.tobytes()
     else:
-        # Placeholder image data if cv2 not available
         from io import BytesIO
         from PIL import Image, ImageDraw, ImageFont
         img_pil = Image.new('RGB', (640, 480), color = (73, 109, 137))
         d = ImageDraw.Draw(img_pil)
-        # Try to use a default font if possible, otherwise skip text
         try:
-            font = ImageFont.truetype("arial.ttf", 30) # Common font, might not be available
+            font = ImageFont.truetype("arial.ttf", 30)
         except IOError:
             font = ImageFont.load_default()
         d.text((100,240), "OpenCV Not Available", fill=(255,255,255), font=font)
@@ -217,7 +216,6 @@ def stitched_biopsy_feed():
         else:
             # Generate a solid color placeholder if cv2 not available
             placeholder_img = np.full((stitched_canvas.shape[0], stitched_canvas.shape[1], 3), 128, dtype="uint8")
-            # Add text to placeholder if PIL is available, otherwise just solid color
             try:
                 from io import BytesIO
                 from PIL import Image, ImageDraw, ImageFont
@@ -232,10 +230,8 @@ def stitched_biopsy_feed():
                 img_pil.save(byte_io, 'jpeg')
                 frame_bytes = byte_io.getvalue()
             except ImportError:
-                # Fallback to just empty bytes if PIL also not available
                 ret, buffer = cv2.imencode(".jpg", placeholder_img)
                 frame_bytes = buffer.tobytes()
-
 
         yield (b"--frame\r\nContent-Type: image/jpeg\r\r\n" +
                frame_bytes + b"\r\n")
@@ -484,22 +480,22 @@ def dashboard():
             flash("Could not generate high-quality stitched image for display. Please check captured tiles.", "warning")
 
     return render_template('dashboard.html',
-                           username=session['username'],
-                           rows=GRID_ROWS,
-                           cols=GRID_COLS,
-                           current_patient_name=current_patient_name,
-                           patient_active=patient_active,
-                           slide_uploaded_for_current_patient=slide_uploaded_for_current_patient,
-                           biopsy_region_selected=biopsy_region_selected,
-                           uploaded_slide_url=uploaded_slide_url,
-                           is_capturing_continuously=is_capturing_continuously,
-                           current_focus=current_focus,
-                           current_zoom=current_zoom,
-                           capture_complete=capture_complete,
-                           current_patient=current_patient,
-                           camera_mode_active=camera_mode_active,
-                           final_stitched_display_url=final_stitched_display_url
-                           )
+                            username=session['username'],
+                            rows=GRID_ROWS,
+                            cols=GRID_COLS,
+                            current_patient_name=current_patient_name,
+                            patient_active=patient_active,
+                            slide_uploaded_for_current_patient=slide_uploaded_for_current_patient,
+                            biopsy_region_selected=biopsy_region_selected,
+                            uploaded_slide_url=uploaded_slide_url,
+                            is_capturing_continuously=is_capturing_continuously,
+                            current_focus=current_focus,
+                            current_zoom=current_zoom,
+                            capture_complete=capture_complete,
+                            current_patient=current_patient,
+                            camera_mode_active=camera_mode_active,
+                            final_stitched_display_url=final_stitched_display_url
+                            )
 
 @app.route('/logout')
 def logout():
@@ -613,8 +609,6 @@ def clear_patient_session():
     stitched_canvas = None
     captured_tiles_count = 0
 
-    # Initialize stitched_canvas with default dimensions if cv2 is not available
-    # This ensures it has a size even if no camera frames are processed yet
     set_cell_dims(480, 640) # Default to a common webcam resolution for initial canvas
     print("DEBUG: Stitched canvas re-initialized with default dimensions during reset.")
 
