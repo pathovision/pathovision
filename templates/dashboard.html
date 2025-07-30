@@ -49,20 +49,23 @@
         /* Form group styling (for patient details and upload) */
         .patient-details-form .form-group,
         .upload-form .form-group {
-            margin-bottom: 20px; /* Spacing between form fields */
-            display: flex; /* Use flexbox for better control */
-            flex-direction: column; /* Stack label above input */
-            align-items: flex-start; /* Align label/input to the left */
+            margin-bottom: 15px; /* Reduced spacing between form fields for a more compact look */
+            display: flex; /* Use flexbox for horizontal alignment */
+            align-items: center; /* Vertically align items in the middle */
+            justify-content: space-between; /* Push label to left, input to right */
+            gap: 15px; /* Space between label and input */
         }
 
         .patient-details-form label,
         .upload-form label {
-            display: block; /* Make label take full width */
+            flex-shrink: 0; /* Prevent label from shrinking */
+            width: 120px; /* Fixed width for labels for consistent alignment */
+            text-align: right; /* Align label text to the right */
             font-family: 'Roboto', sans-serif;
             font-weight: 500;
             color: #333;
-            margin-bottom: 8px; /* Spacing between label and input */
             font-size: 1em;
+            margin-bottom: 0; /* Remove previous bottom margin */
         }
 
         .patient-details-form input[type="text"],
@@ -70,8 +73,9 @@
         .patient-details-form input[type="date"],
         .patient-details-form select,
         .upload-form input[type="file"] {
-            width: 100%; /* Make inputs take full width of their container */
-            padding: 12px;
+            flex-grow: 1; /* Allow input to take remaining space */
+            width: auto; /* Override previous width to allow flex-grow to work */
+            padding: 10px 12px; /* Adjusted padding for a slightly smaller look */
             border: 1px solid #ddd;
             border-radius: 5px;
             font-size: 1em;
@@ -330,6 +334,7 @@
             height: auto;
             display: block;
             user-select: none; /* Prevent image dragging */
+            touch-action: none; /* Prevent default touch actions like scrolling/zooming */
         }
 
         .selection-box {
@@ -711,14 +716,27 @@
                 margin: 20px auto;
             }
 
+            /* Responsive adjustments for patient details form */
+            .patient-details-form .form-group {
+                flex-direction: column; /* Stack label and input vertically on small screens */
+                align-items: flex-start; /* Align to left when stacked */
+                gap: 8px; /* Smaller gap when stacked */
+            }
+
+            .patient-details-form label {
+                width: auto; /* Remove fixed width when stacked */
+                text-align: left; /* Align label text to left */
+            }
+
             .patient-details-form input[type="text"],
             .patient-details-form input[type="number"],
             .patient-details-form input[type="date"],
             .patient-details-form select,
             .upload-form input[type="file"] {
-                width: calc(100% - 20px);
+                width: 100%; /* Full width when stacked */
                 padding: 10px;
             }
+
 
             .feed-container .btn-primary {
                 width: calc(100% - 30px);
@@ -1063,92 +1081,160 @@
         let selection = { x: 0, y: 0, width: 0, height: 0 };
 
         if (cropperImage) {
-            cropperImage.onload = () => {
-                // Ensure the image is loaded before setting up event listeners
-                cropperImage.addEventListener('mousedown', (e) => {
-                    isSelecting = true;
-                    startX = e.offsetX;
-                    startY = e.offsetY;
-                    selectionBox.style.left = `${startX}px`;
-                    selectionBox.style.top = `${startY}px`;
-                    selectionBox.style.width = '0px';
-                    selectionBox.style.height = '0px';
-                    selectionBox.style.display = 'block';
-                });
+            // Function to get event coordinates relative to the image
+            function getCoords(e) {
+                const rect = cropperImage.getBoundingClientRect();
+                let clientX, clientY;
 
-                cropperImage.addEventListener('mousemove', (e) => {
-                    if (!isSelecting) return;
+                if (e.touches && e.touches.length > 0) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else {
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+                
+                // Calculate coordinates relative to the image
+                const x = clientX - rect.left;
+                const y = clientY - rect.top;
 
-                    const currentX = e.offsetX;
-                    const currentY = e.offsetY;
+                return { x, y };
+            }
 
-                    const width = currentX - startX;
-                    const height = currentY - startY;
+            // Mouse Events
+            cropperImage.addEventListener('mousedown', (e) => {
+                e.preventDefault(); // Prevent default browser drag behavior
+                isSelecting = true;
+                const coords = getCoords(e);
+                startX = coords.x;
+                startY = coords.y;
+                
+                selectionBox.style.left = `${startX}px`;
+                selectionBox.style.top = `${startY}px`;
+                selectionBox.style.width = '0px';
+                selectionBox.style.height = '0px';
+                selectionBox.style.display = 'block';
+            });
 
-                    selectionBox.style.left = `${Math.min(startX, currentX)}px`;
-                    selectionBox.style.top = `${Math.min(startY, currentY)}px`;
-                    selectionBox.style.width = `${Math.abs(width)}px`;
-                    selectionBox.style.height = `${Math.abs(height)}px`;
+            cropperImage.addEventListener('mousemove', (e) => {
+                if (!isSelecting) return;
+                e.preventDefault(); // Prevent default browser drag behavior
 
-                    // Store current selection relative to image for later use
-                    selection.x = Math.min(startX, currentX);
-                    selection.y = Math.min(startY, currentY);
-                    selection.width = Math.abs(width);
-                    selection.height = Math.abs(height);
-                });
+                const coords = getCoords(e);
+                const currentX = coords.x;
+                const currentY = coords.y;
 
-                cropperImage.addEventListener('mouseup', () => {
-                    isSelecting = false;
-                    // Ensure selection has valid dimensions before confirming
-                    if (selection.width > 0 && selection.height > 0) {
-                        console.log('Selected region:', selection);
-                    } else {
-                        selectionBox.style.display = 'none'; // Hide if no valid selection
-                    }
-                });
+                const width = currentX - startX;
+                const height = currentY - startY;
 
-                // Handle confirm region button click
-                document.getElementById('confirmRegionBtn').addEventListener('click', async () => {
-                    if (selection.width > 0 && selection.height > 0) {
-                        // Scale coordinates to original image dimensions if necessary
-                        // For simplicity, assuming display size is close to original for now
-                        // If image is scaled by CSS, you'd need:
-                        // const naturalWidth = cropperImage.naturalWidth;
-                        // const naturalHeight = cropperImage.naturalHeight;
-                        // const displayWidth = cropperImage.offsetWidth;
-                        // const displayHeight = cropperImage.offsetHeight;
-                        // const scaleX = naturalWidth / displayWidth;
-                        // const scaleY = naturalHeight / displayHeight;
-                        // const scaledSelection = {
-                        //     x: selection.x * scaleX,
-                        //     y: selection.y * scaleY,
-                        //     width: selection.width * scaleX,
-                        //     height: selection.height * scaleY
-                        // };
+                selectionBox.style.left = `${Math.min(startX, currentX)}px`;
+                selectionBox.style.top = `${Math.min(startY, currentY)}px`;
+                selectionBox.style.width = `${Math.abs(width)}px`;
+                selectionBox.style.height = `${Math.abs(height)}px`;
 
-                        try {
-                            const response = await fetch('/confirm_biopsy_region', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify(selection) // Send the selected coordinates
-                            });
-                            if (response.ok) {
-                                window.location.reload(); // Reload to update dashboard state
-                            } else {
-                                const errorData = await response.text();
-                                alert('Failed to confirm region: ' + errorData);
-                            }
-                        } catch (error) {
-                            console.error('Error confirming region:', error);
-                            alert('An error occurred while confirming the region.');
+                selection.x = Math.min(startX, currentX);
+                selection.y = Math.min(startY, currentY);
+                selection.width = Math.abs(width);
+                selection.height = Math.abs(height);
+            });
+
+            cropperImage.addEventListener('mouseup', () => {
+                isSelecting = false;
+                if (selection.width > 0 && selection.height > 0) {
+                    console.log('Selected region:', selection);
+                } else {
+                    selectionBox.style.display = 'none';
+                }
+            });
+
+            // Touch Events
+            cropperImage.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // Prevent default touch actions (e.g., scrolling)
+                isSelecting = true;
+                const coords = getCoords(e);
+                startX = coords.x;
+                startY = coords.y;
+
+                selectionBox.style.left = `${startX}px`;
+                selectionBox.style.top = `${startY}px`;
+                selectionBox.style.width = '0px';
+                selectionBox.style.height = '0px';
+                selectionBox.style.display = 'block';
+            });
+
+            cropperImage.addEventListener('touchmove', (e) => {
+                if (!isSelecting) return;
+                e.preventDefault(); // Prevent default touch actions (e.g., scrolling)
+
+                const coords = getCoords(e);
+                const currentX = coords.x;
+                const currentY = coords.y;
+
+                const width = currentX - startX;
+                const height = currentY - startY;
+
+                selectionBox.style.left = `${Math.min(startX, currentX)}px`;
+                selectionBox.style.top = `${Math.min(startY, currentY)}px`;
+                selectionBox.style.width = `${Math.abs(width)}px`;
+                selectionBox.style.height = `${Math.abs(height)}px`;
+
+                selection.x = Math.min(startX, currentX);
+                selection.y = Math.min(startY, currentY);
+                selection.width = Math.abs(width);
+                selection.height = Math.abs(height);
+            });
+
+            cropperImage.addEventListener('touchend', () => {
+                isSelecting = false;
+                if (selection.width > 0 && selection.height > 0) {
+                    console.log('Selected region:', selection);
+                } else {
+                    selectionBox.style.display = 'none';
+                }
+            });
+
+
+            // Handle confirm region button click
+            document.getElementById('confirmRegionBtn').addEventListener('click', async () => {
+                if (selection.width > 0 && selection.height > 0) {
+                    // Scale coordinates to original image dimensions if necessary
+                    // For simplicity, assuming display size is close to original for now
+                    // If image is scaled by CSS, you'd need:
+                    // const naturalWidth = cropperImage.naturalWidth;
+                    // const naturalHeight = cropperImage.naturalHeight;
+                    // const displayWidth = cropperImage.offsetWidth;
+                    // const displayHeight = cropperImage.offsetHeight;
+                    // const scaleX = naturalWidth / displayWidth;
+                    // const scaleY = naturalHeight / displayHeight;
+                    // const scaledSelection = {
+                    //     x: selection.x * scaleX,
+                    //     y: selection.y * scaleY,
+                    //     width: selection.width * scaleX,
+                    //     height: selection.height * scaleY
+                    // };
+
+                    try {
+                        const response = await fetch('/confirm_biopsy_region', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(selection) // Send the selected coordinates
+                        });
+                        if (response.ok) {
+                            window.location.reload(); // Reload to update dashboard state
+                        } else {
+                            const errorData = await response.text();
+                            alert('Failed to confirm region: ' + errorData);
                         }
-                    } else {
-                        alert('Please select a region first.');
+                    } catch (error) {
+                        console.error('Error confirming region:', error);
+                        alert('An error occurred while confirming the region.');
                     }
-                });
-            };
+                } else {
+                    alert('Please select a region first.');
+                }
+            });
         }
 
         // --- Client-Side Camera (WebRTC) for Initial Slide Upload ---
