@@ -825,7 +825,7 @@
                         <li><a href="{{ url_for('logout') }}">Logout ({{ session['username'] }})</a></li>
                     {% else %}
                         <li><a href="{{ url_for('login_page') }}">Login</a></li>
-                        <li><a href="{{ url_for('register_page') }}">Register</a></li>
+                        <li><a rel="stylesheet" href="{{ url_for('register_page') }}">Register</a></li>
                     {% endif %}
                 </ul>
             </nav>
@@ -1198,20 +1198,19 @@
             document.getElementById('confirmRegionBtn').addEventListener('click', async () => {
                 if (selection.width > 0 && selection.height > 0) {
                     // Scale coordinates to original image dimensions if necessary
-                    // For simplicity, assuming display size is close to original for now
-                    // If image is scaled by CSS, you'd need:
-                    // const naturalWidth = cropperImage.naturalWidth;
-                    // const naturalHeight = cropperImage.naturalHeight;
-                    // const displayWidth = cropperImage.offsetWidth;
-                    // const displayHeight = cropperImage.offsetHeight;
-                    // const scaleX = naturalWidth / displayWidth;
-                    // const scaleY = naturalHeight / displayHeight;
-                    // const scaledSelection = {
-                    //     x: selection.x * scaleX,
-                    //     y: selection.y * scaleY,
-                    //     width: selection.width * scaleX,
-                    //     height: selection.height * scaleY
-                    // };
+                    const naturalWidth = cropperImage.naturalWidth;
+                    const naturalHeight = cropperImage.naturalHeight;
+                    const displayWidth = cropperImage.offsetWidth;
+                    const displayHeight = cropperImage.offsetHeight;
+                    const scaleX = naturalWidth / displayWidth;
+                    const scaleY = naturalHeight / displayHeight;
+                    
+                    const scaledSelection = {
+                        x: Math.round(selection.x * scaleX),
+                        y: Math.round(selection.y * scaleY),
+                        width: Math.round(selection.width * scaleX),
+                        height: Math.round(selection.height * scaleY)
+                    };
 
                     try {
                         const response = await fetch('/confirm_biopsy_region', {
@@ -1219,7 +1218,7 @@
                             headers: {
                                 'Content-Type': 'application/json'
                             },
-                            body: JSON.stringify(selection) // Send the selected coordinates
+                            body: JSON.stringify(scaledSelection) // Send the scaled coordinates
                         });
                         if (response.ok) {
                             window.location.reload(); // Reload to update dashboard state
@@ -1247,7 +1246,10 @@
 
         startCameraBtn.addEventListener('click', async () => {
             try {
-                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                // Request environment-facing camera (back camera)
+                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: { exact: 'environment' } } 
+                });
                 cameraPreview.srcObject = cameraStream;
                 cameraPreview.style.display = 'block';
                 startCameraBtn.style.display = 'none';
@@ -1263,7 +1265,19 @@
 
             } catch (err) {
                 console.error("Error accessing camera: ", err);
-                alert("Could not access camera. Please ensure it's connected and you've granted permission.");
+                // Fallback for devices that don't support exact 'environment' or no back camera
+                alert("Could not access environment-facing camera. Trying default camera. Error: " + err.message);
+                try {
+                    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true }); // Try default camera
+                    cameraPreview.srcObject = cameraStream;
+                    cameraPreview.style.display = 'block';
+                    startCameraBtn.style.display = 'none';
+                    stopCameraBtn.style.display = 'inline-block';
+                    captureInitialSlideBtn.style.display = 'inline-block';
+                } catch (fallbackErr) {
+                    console.error("Error accessing any camera: ", fallbackErr);
+                    alert("Could not access any camera. Please ensure it's connected and you've granted permission.");
+                }
             }
         });
 
@@ -1361,7 +1375,10 @@
         // Function to start live camera for biopsy capture
         async function startLiveCapture() {
             try {
-                liveCameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                // Request environment-facing camera (back camera)
+                liveCameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: { exact: 'environment' } } 
+                });
                 liveCameraFeed.srcObject = liveCameraStream;
                 liveCameraFeed.style.display = 'block';
                 startLiveCaptureBtn.style.display = 'none';
@@ -1378,7 +1395,20 @@
                 // captureInterval = setInterval(captureSingleTile, 5000); // Example: capture every 5 seconds
             } catch (err) {
                 console.error("Error accessing live camera: ", err);
-                alert("Could not access live camera. Please ensure it's connected and you've granted permission.");
+                // Fallback for devices that don't support exact 'environment' or no back camera
+                alert("Could not access environment-facing camera for live capture. Trying default camera. Error: " + err.message);
+                try {
+                    liveCameraStream = await navigator.mediaDevices.getUserMedia({ video: true }); // Try default camera
+                    liveCameraFeed.srcObject = liveCameraStream;
+                    liveCameraFeed.style.display = 'block';
+                    startLiveCaptureBtn.style.display = 'none';
+                    stopLiveCaptureBtn.style.display = 'inline-block';
+                    captureSingleTileBtn.style.display = 'inline-block';
+                    resetCaptureBtn.style.display = 'inline-block';
+                } catch (fallbackErr) {
+                    console.error("Error accessing any camera for live capture: ", fallbackErr);
+                    alert("Could not access any camera for live capture. Please ensure it's connected and you've granted permission.");
+                }
             }
         }
 
