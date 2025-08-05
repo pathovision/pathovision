@@ -49,17 +49,17 @@
         /* Form group styling (for patient details and upload) */
         .patient-details-form .form-group,
         .upload-form .form-group {
-            margin-bottom: 15px; /* Reduced spacing between form fields for a more compact look */
+            margin-bottom: 15px; /* Spacing between form fields */
             display: flex; /* Use flexbox for horizontal alignment */
             align-items: center; /* Vertically align items in the middle */
-            justify-content: space-between; /* Push label to left, input to right */
-            gap: 15px; /* Space between label and input */
+            /* Removed justify-content: space-between; to allow more control with gap */
+            gap: 20px; /* Increased gap for better visual separation */
         }
 
         .patient-details-form label,
         .upload-form label {
             flex-shrink: 0; /* Prevent label from shrinking */
-            width: 120px; /* Fixed width for labels for consistent alignment */
+            width: 130px; /* Slightly increased fixed width for labels for better alignment */
             text-align: right; /* Align label text to the right */
             font-family: 'Roboto', sans-serif;
             font-weight: 500;
@@ -716,7 +716,7 @@
                 margin: 20px auto;
             }
 
-            /* Responsive adjustments for patient details form */
+            /* Responsive adjustments for patient details form - Stack on small screens */
             .patient-details-form .form-group {
                 flex-direction: column; /* Stack label and input vertically on small screens */
                 align-items: flex-start; /* Align to left when stacked */
@@ -1432,10 +1432,10 @@
         async function captureSingleTile() {
             if (liveCameraStream) {
                 const context = captureCanvas.getContext('2d');
-                captureCanvas.width = liveCameraFeed.videoWidth;
-                captureCanvas.height = liveCameraFeed.videoHeight;
-                context.drawImage(liveCameraFeed, 0, 0, captureCanvas.width, captureCanvas.height);
-                const imageDataURL = captureCanvas.toDataURL('image/jpeg', 0.9);
+                cameraCanvas.width = liveCameraFeed.videoWidth;
+                cameraCanvas.height = liveCameraFeed.videoHeight;
+                context.drawImage(liveCameraFeed, 0, 0, cameraCanvas.width, cameraCanvas.height);
+                const imageDataURL = cameraCanvas.toDataURL('image/jpeg', 0.9);
 
                 try {
                     const response = await fetch('/capture_biopsy_tile_from_client', {
@@ -1521,9 +1521,9 @@
                     alert('Failed to save report: ' + data.message);
                 }
             } catch (error) {
-                console.error('Error saving report:', error);
-                alert('An error occurred while saving the report.');
-            }
+                    console.error('Error saving report:', error);
+                    alert('An error occurred while saving the report.');
+                }
         }
 
         function downloadStitchedBiopsy() {
